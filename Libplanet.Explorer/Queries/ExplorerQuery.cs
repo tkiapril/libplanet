@@ -1,16 +1,14 @@
 #nullable disable
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
 using GraphQL.Types;
 using Libplanet.Action;
 using Libplanet.Blockchain;
 using Libplanet.Blocks;
 using Libplanet.Explorer.GraphTypes;
+using Libplanet.Explorer.Indexing;
 using Libplanet.Explorer.Interfaces;
-using Libplanet.Explorer.Store;
 using Libplanet.Store;
 using Libplanet.Tx;
 
@@ -45,6 +43,8 @@ namespace Libplanet.Explorer.Queries
 
         private static IStore Store => ChainContext.Store;
 
+        private static IBlockChainIndex Index => ChainContext.Index;
+
         internal static IEnumerable<Block<T>> ListBlocks(
             bool desc,
             long offset,
@@ -52,43 +52,55 @@ namespace Libplanet.Explorer.Queries
             bool excludeEmptyTxs,
             Address? miner)
         {
-            Block<T> tip = Chain.Tip;
-            long tipIndex = tip.Index;
-            IStore store = ChainContext.Store;
-
-            if (desc)
+            IEnumerable<(long Index, BlockHash Hash)> indexList;
+            if (Index is not null)
             {
                 if (offset < 0)
                 {
-                    offset = tipIndex + offset + 1;
+                    offset = Index.Tip.Index + offset + 1;
                 }
-                else
-                {
-                    offset = tipIndex - offset + 1 - (limit ?? 0);
-                }
+
+                indexList = Index.GetBlockHashesByOffset((int)offset, (int?)limit, desc);
             }
             else
             {
-                if (offset < 0)
+                Block<T> tip = Chain.Tip;
+                long tipIndex = tip.Index;
+
+                if (desc)
                 {
-                    offset = tipIndex + offset + 1;
+                    if (offset < 0)
+                    {
+                        offset = tipIndex + offset + 1;
+                    }
+                    else
+                    {
+                        offset = tipIndex - offset + 1 - (limit ?? 0);
+                    }
                 }
-            }
+                else
+                {
+                    if (offset < 0)
+                    {
+                        offset = tipIndex + offset + 1;
+                    }
+                }
 
-            var indexList = store.IterateIndexes(
-                    Chain.Id,
-                    (int)offset,
-                    limit == null ? null : (int)limit)
-                .Select((value, i) => new { i, value } );
+                indexList = Store.IterateIndexes(
+                        Chain.Id,
+                        (int)offset,
+                        limit == null ? null : (int)limit)
+                    .Select((value, i) => ((long)i, value));
 
-            if (desc)
-            {
-                indexList = indexList.Reverse();
+                if (desc)
+                {
+                    indexList = indexList.Reverse();
+                }
             }
 
             foreach (var index in indexList)
             {
-                var block = store.GetBlock<T>(index.value);
+                var block = Store.GetBlock<T>(index.Hash);
                 bool isMinerValid = miner is null || miner == block.Miner;
                 bool isTxValid = !excludeEmptyTxs || block.Transactions.Any();
                 if (!isMinerValid || !isTxValid)
@@ -103,8 +115,9 @@ namespace Libplanet.Explorer.Queries
         internal static IEnumerable<Transaction<T>> ListTransactions(
             Address? signer, Address? involved, bool desc, long offset, int? limit)
         {
-            Block<T> tip = Chain.Tip;
-            long tipIndex = tip.Index;
+            long tipIndex = Index is not null
+                ? Index.Tip.Index
+                : Chain.Tip.Index;
 
             if (offset < 0)
             {
@@ -116,45 +129,19 @@ namespace Libplanet.Explorer.Queries
                 yield break;
             }
 
-            if (Store is IRichStore richStore)
+            if (Index is null || (signer is null && involved is null))
             {
-                IEnumerable<TxId> txIds;
-                if (!(signer is null))
-                {
-                    txIds = richStore
-                        .IterateSignerReferences(
-                            (Address)signer, desc, (int)offset, limit ?? int.MaxValue);
-                }
-                else if (!(involved is null))
-                {
-                    txIds = richStore
-                        .IterateUpdatedAddressReferences(
-                            (Address)involved, desc, (int)offset, limit ?? int.MaxValue);
-                }
-                else
-                {
-                    txIds = richStore
-                        .IterateTxReferences(null, desc, (int)offset, limit ?? int.MaxValue)
-                        .Select(r => r.Item1);
-                }
+                Block<T> block = Chain[desc ? tipIndex - offset : offset];
 
-                var txs = txIds.Select(txId => Chain.GetTransaction(txId));
-                foreach (var tx in txs)
+                while (block is { } && limit is null or > 0)
                 {
-                    yield return tx;
-                }
-
-                yield break;
-            }
-
-            Block<T> block = Chain[desc ? tipIndex - offset : offset];
-
-            while (!(block is null) && (limit is null || limit > 0))
-            {
-                foreach (var tx in desc ? block.Transactions.Reverse() : block.Transactions)
-                {
-                    if (IsValidTransaction(tx, signer, involved))
+                    foreach (var tx in desc ? block.Transactions.Reverse() : block.Transactions)
                     {
+                        if (Index is null && !IsValidTransaction(tx, signer, involved))
+                        {
+                            continue;
+                        }
+
                         yield return tx;
                         limit--;
                         if (limit <= 0)
@@ -162,9 +149,27 @@ namespace Libplanet.Explorer.Queries
                             break;
                         }
                     }
-                }
 
-                block = GetNextBlock(block, desc);
+                    block = GetNextBlock(block, desc);
+                }
+            }
+            else if (signer is { } signerValue)
+            {
+                foreach (var tx in Index
+                             .GetSignedTxIdsByAddress(signerValue, (int)offset, limit, desc)
+                             .Select(item => Chain.GetTransaction(item)))
+                {
+                    yield return tx;
+                }
+            }
+            else if (involved is { } involvedValue)
+            {
+                foreach (var tx in Index
+                             .GetInvolvedTxIdsByAddress(involvedValue, (int)offset, limit, desc)
+                             .Select(item => Chain.GetTransaction(item)))
+                {
+                    yield return tx;
+                }
             }
         }
 
@@ -192,7 +197,10 @@ namespace Libplanet.Explorer.Queries
 
         internal static Block<T> GetBlockByHash(BlockHash hash) => Store.GetBlock<T>(hash);
 
-        internal static Block<T> GetBlockByIndex(long index) => Chain[index];
+        internal static Block<T> GetBlockByIndex(long index) =>
+            Index is not null
+                ? Chain[Index[index]]
+                : Chain[index];
 
         internal static Transaction<T> GetTransaction(TxId id) => Chain.GetTransaction(id);
 

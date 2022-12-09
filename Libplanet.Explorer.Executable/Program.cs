@@ -17,6 +17,7 @@ using Libplanet.Blockchain.Policies;
 using Libplanet.Blocks;
 using Libplanet.Crypto;
 using Libplanet.Explorer.Executable.Exceptions;
+using Libplanet.Explorer.Indexing;
 using Libplanet.Explorer.Interfaces;
 using Libplanet.Explorer.Schemas;
 using Libplanet.Explorer.Store;
@@ -29,6 +30,7 @@ using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using NetMQ;
+using Nito.AsyncEx;
 using Serilog;
 using Serilog.Events;
 
@@ -491,6 +493,14 @@ If omitted (default) explorer only the local blockchain store.")]
             public BlockChain<NullAction> BlockChain => BlockChainSingleton;
 
             public IStore Store => StoreSingleton;
+
+            // XXX workaround for build; we decided to decommission Libplanet.Explorer.Executable
+            // project, but it will be removed after we move the schema command. As this project
+            // does not work as is, this change is barely enough to allow the build.
+            // See also: https://github.com/planetarium/libplanet/discussions/2588
+            public IBlockChainIndex Index => null;
+
+            public AsyncManualResetEvent ExplorerReady => null;
 
             internal static bool PreloadedSingleton { get; set; }
 
