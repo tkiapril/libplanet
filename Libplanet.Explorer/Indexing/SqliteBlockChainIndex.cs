@@ -1,0 +1,425 @@
+using System;
+using System.Collections.Immutable;
+using System.Data;
+using System.Linq;
+using System.Threading.Tasks;
+using Bencodex.Types;
+using Libplanet.Action;
+using Libplanet.Action.Sys;
+using Libplanet.Blocks;
+using Libplanet.Explorer.Indexing.EntityFramework;
+using Libplanet.Tx;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using SqlKata.Compilers;
+using SqlKata.Execution;
+
+namespace Libplanet.Explorer.Indexing;
+
+/// <summary>
+/// An <see cref="IBlockChainIndex"/> object that uses Sqlite 3 as the backend.
+/// </summary>
+public class SqliteBlockChainIndex : BlockChainIndexBase
+{
+    /// <summary>
+    /// Create an instance of <see cref="IBlockChainIndex"/> that uses Sqlite 3 as the backend.
+    /// </summary>
+    /// <param name="connection">The connection to a Sqlite 3 database.</param>
+    public SqliteBlockChainIndex(SqliteConnection connection)
+    {
+        if (connection.State == ConnectionState.Closed)
+        {
+            connection.Open();
+        }
+
+        var contextForMigration = new SqliteBlockChainIndexEfContext(connection);
+        if (contextForMigration.Database.GetPendingMigrations().Any())
+        {
+            contextForMigration.Database.Migrate();
+        }
+
+        contextForMigration.Dispose();
+        Db = new QueryFactory(connection, new SqliteCompiler());
+    }
+
+    private QueryFactory Db { get; }
+
+    /// <inheritdoc />
+    public override IndexedBlockItem GetIndexedBlock(BlockHash hash)
+    {
+        EnsureReady();
+        return IndexedBlockItem.FromTuple(
+                   Db.Query("Blocks")
+                       .Select("Index", "Hash", "MinerAddress")
+                       .Where("Hash", hash.ByteArray.ToArray())
+                       .FirstOrDefault<(long, byte[], byte[])>())
+               ?? throw new IndexOutOfRangeException(
+                   $"The hash {hash} does not exist in the index.");
+    }
+
+    /// <inheritdoc />
+    public override async Task<IndexedBlockItem> GetIndexedBlockAsync(BlockHash hash)
+    {
+        EnsureReady();
+        return IndexedBlockItem.FromTuple(
+            await Db.Query("Blocks")
+                .Select("Index", "Hash", "MinerAddress")
+                .Where("Hash", hash.ByteArray.ToArray())
+                .FirstOrDefaultAsync<(long, byte[], byte[])>())
+               ?? throw new IndexOutOfRangeException(
+                   $"The hash {hash} does not exist in the index.");
+    }
+
+    /// <inheritdoc />
+    public override IImmutableList<IndexedBlockItem>
+        GetIndexedBlocks(Range indexRange, bool desc, Address? miner)
+    {
+        EnsureReady();
+        var (offset, limit) = indexRange.GetOffsetAndLength((int)((Tip.Index + 1) & int.MaxValue));
+        if (limit == 0)
+        {
+            return ImmutableArray<IndexedBlockItem>.Empty;
+        }
+
+        var query = Db.Query("Blocks")
+            .Select("Index", "Hash", "MinerAddress")
+            .Limit(limit)
+            .Offset(offset);
+        query = miner is { } minerValue
+            ? query.Where("MinerAddress", minerValue.ByteArray.ToArray())
+            : query;
+        query = desc ? query.OrderByDesc("Index") : query.OrderBy("Index");
+        return query.Get<(long, byte[], byte[])>()
+            .Select(result => IndexedBlockItem.FromTuple(result)!.Value)
+            .ToImmutableArray();
+    }
+
+    /// <inheritdoc />
+    public override IImmutableList<IndexedTransactionItem>
+        GetSignedTransactions(Address signer, int? offset, int? limit, bool desc)
+    {
+        EnsureReady();
+        if (limit == 0)
+        {
+            return ImmutableArray<IndexedTransactionItem>.Empty;
+        }
+
+        var query = Db.Query("Transactions")
+            .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
+            .Select(
+                "Transactions.Id",
+                "Transactions.SystemActionTypeId",
+                "Transactions.SignerAddress",
+                "Transactions.BlockHash")
+            .Where("Transactions.SignerAddress", signer.ByteArray.ToArray());
+        query = desc
+            ? query.OrderByDesc("Blocks.Index", "Transactions.Id")
+            : query.OrderBy("Blocks.Index", "Transactions.Id");
+        query = limit is { } limitVal ? query.Limit(limitVal) : query;
+        query = offset is { } offsetVal ? query.Offset(offsetVal) : query;
+        return query.Get<(byte[], short?, byte[], byte[])>()
+            .Select(result => IndexedTransactionItem.FromTuple(result)!.Value)
+            .ToImmutableArray();
+    }
+
+    /// <inheritdoc />
+    public override IImmutableList<IndexedTransactionItem>
+        GetInvolvedTransactions(Address address, int? offset, int? limit, bool desc)
+    {
+        EnsureReady();
+        if (limit == 0)
+        {
+            return ImmutableArray<IndexedTransactionItem>.Empty;
+        }
+
+        var query = Db.Query("Transactions")
+            .Join(
+                "AccountTransaction",
+                "AccountTransaction.InvolvedTransactionsId",
+                "Transactions.Id")
+            .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
+            .Select(
+                "Transactions.Id",
+                "Transactions.SystemActionTypeId",
+                "Transactions.SignerAddress",
+                "Transactions.BlockHash")
+            .Where("AccountTransaction.UpdatedAddressesAddress", address.ByteArray.ToArray());
+        query = desc
+            ? query.OrderByDesc("Blocks.Index", "Transactions.Id")
+            : query.OrderBy("Blocks.Index", "Transactions.Id");
+        query = limit is { } limitVal ? query.Limit(limitVal) : query;
+        query = offset is { } offsetVal ? query.Offset(offsetVal) : query;
+        return query.Get<(byte[], short?, byte[], byte[])>()
+            .Select(result => IndexedTransactionItem.FromTuple(result)!.Value)
+            .ToImmutableArray();
+    }
+
+    /// <inheritdoc />
+    public override long? AccountLastNonce(Address address)
+    {
+        EnsureReady();
+        return Db.Query("Accounts")
+            .Select("LastNonce")
+            .Where("Address", address.ByteArray.ToArray())
+            .FirstOrDefault<long?>();
+    }
+
+    /// <inheritdoc />
+    public override bool TryGetContainedBlock(TxId txId, out IndexedBlockItem containedBlock)
+    {
+        EnsureReady();
+        containedBlock = default;
+        var item = IndexedBlockItem.FromTuple(
+            Db.Query("Transactions")
+                .Select("Blocks.Index", "Blocks.Hash", "Blocks.MinerAddress")
+                .Where("Transactions.Id", txId.ByteArray.ToArray())
+                .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
+                .FirstOrDefault<(long, byte[], byte[])>());
+        if (item is not { } itemValue)
+        {
+            return false;
+        }
+
+        containedBlock = itemValue;
+        return true;
+    }
+
+    /// <inheritdoc />
+    protected override IndexedBlockItem? GetTipImpl() =>
+        IndexedBlockItem.FromTuple(
+            Db.Query("Blocks")
+                .Select("Index", "Hash", "MinerAddress")
+                .OrderByDesc("Index")
+                .FirstOrDefault<(long, byte[], byte[])>());
+
+    /// <inheritdoc />
+    protected override async Task<IndexedBlockItem?> GetTipAsyncImpl() =>
+        IndexedBlockItem.FromTuple(
+            await Db.Query("Blocks")
+                .Select("Index", "Hash", "MinerAddress")
+                .OrderByDesc("Index")
+                .FirstOrDefaultAsync<(long, byte[], byte[])>());
+
+    /// <inheritdoc />
+    protected override IndexedBlockItem GetIndexedBlockImpl(long index) =>
+        IndexedBlockItem.FromTuple(
+            Db.Query("Blocks")
+                .Select("Index", "Hash", "MinerAddress")
+                .Where("Index", index >= 0 ? index : (GetTipImpl()?.Index ?? 0) + index + 1)
+                .FirstOrDefault<(long, byte[], byte[])>())
+        ?? throw new IndexOutOfRangeException($"The block #{index} does not exist in the index.");
+
+    /// <inheritdoc />
+    protected override async Task<IndexedBlockItem> GetIndexedBlockAsyncImpl(long index) =>
+        IndexedBlockItem.FromTuple(
+            await Db.Query("Blocks")
+                .Select("Index", "Hash", "MinerAddress")
+                .Where(
+                    "Index",
+                    index >= 0 ? index : ((await GetTipAsyncImpl())?.Index ?? 0) + index + 1)
+                .FirstOrDefaultAsync<(long, byte[], byte[])>())
+        ?? throw new IndexOutOfRangeException($"The block #{index} does not exist in the index.");
+
+    /// <inheritdoc />
+    protected override void AddBlockImpl<T>(Block<T> block)
+    {
+        var minerAddress = block.Miner.ByteArray.ToArray();
+        var blockHash = block.Hash.ByteArray.ToArray();
+
+        using var scope = Db.Connection.BeginTransaction();
+        Db.InsertOrIgnore("Accounts", new { Address = minerAddress }, scope);
+        Db.Query("Blocks")
+            .Insert(
+                new
+                {
+                    Hash = blockHash,
+                    Index = block.Index,
+                    MinerAddress = minerAddress,
+                },
+                scope);
+
+        var txNonces = ImmutableDictionary<Address, long>.Empty;
+
+        foreach (var tx in block.Transactions)
+        {
+            if (!txNonces.TryGetValue(tx.Signer, out var nonce) || tx.Nonce > nonce)
+            {
+                txNonces = txNonces.SetItem(tx.Signer, tx.Nonce);
+            }
+
+            var signerAddress = tx.Signer.ByteArray.ToArray();
+            var txId = tx.Id.ByteArray.ToArray();
+            Db.InsertOrIgnore("Accounts", new { Address = signerAddress }, scope);
+
+            short? systemActionTypeId = tx.SystemAction is { } systemAction
+                ? (short)Registry.Serialize(systemAction).GetValue<Integer>("type_id")
+                : null;
+            Db.Query("Transactions").Insert(
+                new
+                {
+                    Id = txId,
+                    SystemActionTypeId = systemActionTypeId,
+                    SignerAddress = signerAddress,
+                    BlockHash = blockHash,
+                },
+                scope);
+
+            foreach (var address
+                     in tx.UpdatedAddresses.Select(address => address.ByteArray.ToArray()))
+            {
+                Db.InsertOrIgnore(
+                    "Accounts", new { Address = address, }, scope);
+                Db.Query("AccountTransaction")
+                    .Insert(
+                        new
+                        {
+                            InvolvedTransactionsId = txId,
+                            UpdatedAddressesAddress = address,
+                        },
+                        scope);
+            }
+
+            if (tx.CustomActions is not { } customActions)
+            {
+                continue;
+            }
+
+            foreach (var customAction in customActions)
+            {
+                if (ActionTypeAttribute.ValueOf(customAction.GetType()) is not
+                    { } typeId)
+                {
+                    continue;
+                }
+
+                Db.InsertOrIgnore(
+                    "CustomActions",
+                    new
+                    {
+                        TypeId = typeId,
+                    },
+                    scope);
+                Db.Query("CustomActionTransaction")
+                    .Insert(
+                        new
+                        {
+                            ContainedTransactionsId = txId,
+                            CustomActionsTypeId = typeId,
+                        },
+                        scope);
+            }
+        }
+
+        foreach (var nonce in txNonces)
+        {
+            Db.Query("Accounts")
+                .Where(new { Address = nonce.Key.ByteArray.ToArray() })
+                .Update(
+                    new { LastNonce = nonce.Value },
+                    scope);
+        }
+
+        scope.Commit();
+    }
+
+    /// <inheritdoc />
+    protected override async Task AddBlockAsyncImpl<T>(Block<T> block)
+    {
+        var minerAddress = block.Miner.ByteArray.ToArray();
+        var blockHash = block.Hash.ByteArray.ToArray();
+
+        using var scope = Db.Connection.BeginTransaction();
+        await Db.InsertOrIgnoreAsync("Accounts", new { Address = minerAddress }, scope);
+        await Db.Query("Blocks")
+            .InsertAsync(
+                new
+                {
+                    Hash = blockHash,
+                    Index = block.Index,
+                    MinerAddress = minerAddress,
+                },
+                scope);
+
+        var txNonces = ImmutableDictionary<Address, long>.Empty;
+
+        foreach (var tx in block.Transactions)
+        {
+            if (!txNonces.TryGetValue(tx.Signer, out var nonce) || tx.Nonce > nonce)
+            {
+                txNonces = txNonces.SetItem(tx.Signer, tx.Nonce);
+            }
+
+            var signerAddress = tx.Signer.ByteArray.ToArray();
+            var txId = tx.Id.ByteArray.ToArray();
+            await Db.InsertOrIgnoreAsync("Accounts", new { Address = signerAddress }, scope);
+
+            short? systemActionTypeId = tx.SystemAction is { } systemAction
+                ? (short)Registry.Serialize(systemAction).GetValue<Integer>("type_id")
+                : null;
+            await Db.Query("Transactions").InsertAsync(
+                new
+                {
+                    Id = txId,
+                    SystemActionTypeId = systemActionTypeId,
+                    SignerAddress = signerAddress,
+                    BlockHash = blockHash,
+                },
+                scope);
+
+            foreach (var address
+                     in tx.UpdatedAddresses.Select(address => address.ByteArray.ToArray()))
+            {
+                await Db.InsertOrIgnoreAsync(
+                    "Accounts", new { Address = address, }, scope);
+                await Db.Query("AccountTransaction")
+                    .InsertAsync(
+                        new
+                        {
+                            InvolvedTransactionsId = txId,
+                            UpdatedAddressesAddress = address,
+                        },
+                        scope);
+            }
+
+            if (tx.CustomActions is not { } customActions)
+            {
+                continue;
+            }
+
+            foreach (var customAction in customActions)
+            {
+                if (ActionTypeAttribute.ValueOf(customAction.GetType()) is not { } typeId)
+                {
+                    continue;
+                }
+
+                await Db.InsertOrIgnoreAsync(
+                    "CustomActions",
+                    new
+                    {
+                        TypeId = typeId,
+                    },
+                    scope);
+                await Db.Query("CustomActionTransaction")
+                    .InsertAsync(
+                        new
+                        {
+                            ContainedTransactionsId = txId,
+                            CustomActionsTypeId = typeId,
+                        },
+                        scope);
+            }
+        }
+
+        foreach (var nonce in txNonces)
+        {
+            await Db.Query("Accounts")
+                .Where(new { Address = nonce.Key.ByteArray.ToArray() })
+                .UpdateAsync(
+                    new { LastNonce = nonce.Value },
+                    scope);
+        }
+
+        scope.Commit();
+    }
+}
