@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using Cocona;
 using Libplanet.Action;
 using Libplanet.Explorer.Indexing;
@@ -41,7 +40,7 @@ namespace Libplanet.Explorer.Cocona.Commands
             var protocol = uri.Scheme.Split('+')[0];
             var transport = string.Join('+', uri.Scheme.Split('+')[1..]);
 
-            if (transport.Trim().ToLower(CultureInfo.InvariantCulture) == string.Empty)
+            if (string.IsNullOrWhiteSpace(transport))
             {
                 throw new ArgumentException(
                     $"The index URI scheme must contain a transport (e.g. sqlite+file://).",
@@ -49,7 +48,7 @@ namespace Libplanet.Explorer.Cocona.Commands
                 );
             }
 
-            if (protocol.ToLower(CultureInfo.InvariantCulture) is "sqlite" or "sqlite3")
+            if (protocol is "sqlite" or "sqlite3")
             {
                 return new SqliteBlockChainIndex(
                     new SqliteConnection(

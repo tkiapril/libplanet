@@ -77,8 +77,9 @@ public abstract class BlockChainIndexTest
     [Fact]
     public void AccountLastNonce()
     {
-        foreach (var address in ChainFx.PrivateKeys.Select(pk => pk.ToAddress()))
+        foreach (var pk in ChainFx.PrivateKeys)
         {
+            var address = pk.ToAddress();
             Assert.Equal(ChainFx.Chain.GetNextTxNonce(address) - 1, Fx.Index.AccountLastNonce(address));
         }
 
@@ -167,8 +168,9 @@ public abstract class BlockChainIndexTest
     [MemberData(nameof(BooleanPermutation3))]
     public void GetIndexedBlocksWithMiner(bool offsetPresent, bool limitPresent, bool desc)
     {
-        foreach (var address in ChainFx.PrivateKeys.Select(pk => pk.ToAddress()))
+        foreach (var pk in ChainFx.PrivateKeys)
         {
+            var address = pk.ToAddress();
             var inChain = ChainFx.MinedBlocks[address].ToArray();
             inChain = desc ? inChain.Reverse().ToArray() : inChain;
             int? offset = offsetPresent ? inChain.Length / 4 : null;
@@ -208,8 +210,9 @@ public abstract class BlockChainIndexTest
     [MemberData(nameof(BooleanPermutation3))]
     public void GetSignedTransactions(bool offsetPresent, bool limitPresent, bool desc)
     {
-        foreach (var address in ChainFx.PrivateKeys.Select(pk => pk.ToAddress()))
+        foreach (var pk in ChainFx.PrivateKeys)
         {
+            var address = pk.ToAddress();
             var inChain = ChainFx.SignedTxs[address].ToArray();
             inChain = desc ? inChain.Reverse().ToArray() : inChain;
             int? offset = offsetPresent ? inChain.Length / 4 : null;
@@ -237,8 +240,9 @@ public abstract class BlockChainIndexTest
     [MemberData(nameof(BooleanPermutation3))]
     public void GetInvolvedTransactions(bool offsetPresent, bool limitPresent, bool desc)
     {
-        foreach (var address in ChainFx.PrivateKeys.Select(pk => pk.ToAddress()))
+        foreach (var pk in ChainFx.PrivateKeys)
         {
+            var address = pk.ToAddress();
             var inChain = ChainFx.InvolvedTxs[address].ToArray();
             inChain = desc ? inChain.Reverse().ToArray() : inChain;
             int? offset = offsetPresent ? inChain.Length / 4 : null;

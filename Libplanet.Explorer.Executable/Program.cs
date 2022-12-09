@@ -494,6 +494,7 @@ If omitted (default) explorer only the local blockchain store.")]
             // XXX workaround for build; we decided to decommission Libplanet.Explorer.Executable
             // project, but it will be removed after we move the schema command. As this project
             // does not work as is, this change is barely enough to allow the build.
+            // See also: https://github.com/planetarium/libplanet/discussions/2588
             public IBlockChainIndex Index => null;
 
             public AsyncManualResetEvent ExplorerReady => null;
