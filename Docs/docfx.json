@@ -8,6 +8,7 @@
             "Libplanet.Net/Libplanet.Net.csproj",
             "Libplanet.Node/Libplanet.Node.csproj",
             "Libplanet.RocksDBStore/Libplanet.RocksDBStore.csproj",
+            "Libplanet.Explorer.Cocona/Libplanet.Explorer.Cocona.csproj",
             "Libplanet.Extensions.Cocona/Libplanet.Extensions.Cocona.csproj",
             "Libplanet.Stun/Libplanet.Stun.csproj"
           ],
