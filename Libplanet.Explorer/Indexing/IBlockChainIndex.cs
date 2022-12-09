@@ -170,24 +170,25 @@ public interface IBlockChainIndex
     /// Record the contents of a <paramref name="block"/> to the index.
     /// </summary>
     /// <param name="block">The block to record to the index.</param>
+    /// <param name="token">A token to mark the cancellation of processing.</param>
     /// <typeparam name="T">An user-provided <see cref="IAction"/> type.</typeparam>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
-    void AddBlock<T>(Block<T> block)
+    void AddBlock<T>(Block<T> block, CancellationToken? token = null)
         where T : IAction, new();
 
     /// <inheritdoc cref="AddBlock{T}"/>
-    Task AddBlockAsync<T>(Block<T> block)
+    Task AddBlockAsync<T>(Block<T> block, CancellationToken? token = null)
         where T : IAction, new();
 
-    internal void Prepare<T>(BlockChain<T> chain)
+    internal void Prepare<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)
         where T : IAction, new();
 
-    internal Task PrepareAsync<T>(BlockChain<T> chain, CancellationToken stoppingToken)
+    internal Task PrepareAsync<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)
         where T : IAction, new();
 
-    internal void Populate<T>(IStore store)
+    internal void Populate<T>(IStore store, CancellationToken? stoppingToken = null)
         where T : IAction, new();
 
-    internal Task PopulateAsync<T>(IStore store, CancellationToken stoppingToken)
+    internal Task PopulateAsync<T>(IStore store, CancellationToken? stoppingToken = null)
         where T : IAction, new();
 }

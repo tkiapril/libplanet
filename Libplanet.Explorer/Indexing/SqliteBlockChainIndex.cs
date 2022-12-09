@@ -2,6 +2,7 @@ using System;
 using System.Collections.Immutable;
 using System.Data;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Bencodex.Types;
 using Libplanet.Action;
@@ -221,7 +222,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         ?? throw new IndexOutOfRangeException($"The block #{index} does not exist in the index.");
 
     /// <inheritdoc />
-    protected override void AddBlockImpl<T>(Block<T> block)
+    protected override void AddBlockImpl<T>(Block<T> block, CancellationToken? stoppingToken)
     {
         var minerAddress = block.Miner.ByteArray.ToArray();
         var blockHash = block.Hash.ByteArray.ToArray();
@@ -242,6 +243,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
         foreach (var tx in block.Transactions)
         {
+            if (stoppingToken?.IsCancellationRequested ?? false)
+            {
+                scope.Rollback();
+                return;
+            }
+
             if (!txNonces.TryGetValue(tx.Signer, out var nonce) || tx.Nonce > nonce)
             {
                 txNonces = txNonces.SetItem(tx.Signer, tx.Nonce);
@@ -267,6 +274,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             foreach (var address
                      in tx.UpdatedAddresses.Select(address => address.ByteArray.ToArray()))
             {
+                if (stoppingToken?.IsCancellationRequested ?? false)
+                {
+                    scope.Rollback();
+                    return;
+                }
+
                 Db.InsertOrIgnore(
                     "Accounts", new { Address = address, }, scope);
                 Db.Query("AccountTransaction")
@@ -286,6 +299,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
             foreach (var customAction in customActions)
             {
+                if (stoppingToken?.IsCancellationRequested ?? false)
+                {
+                    scope.Rollback();
+                    return;
+                }
+
                 if (ActionTypeAttribute.ValueOf(customAction.GetType()) is not
                     { } typeId)
                 {
@@ -312,6 +331,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
         foreach (var nonce in txNonces)
         {
+            if (stoppingToken?.IsCancellationRequested ?? false)
+            {
+                scope.Rollback();
+                return;
+            }
+
             Db.Query("Accounts")
                 .Where(new { Address = nonce.Key.ByteArray.ToArray() })
                 .Update(
@@ -323,7 +348,8 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
     }
 
     /// <inheritdoc />
-    protected override async Task AddBlockAsyncImpl<T>(Block<T> block)
+    protected override async Task AddBlockAsyncImpl<T>(
+        Block<T> block, CancellationToken? stoppingToken)
     {
         var minerAddress = block.Miner.ByteArray.ToArray();
         var blockHash = block.Hash.ByteArray.ToArray();
@@ -344,6 +370,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
         foreach (var tx in block.Transactions)
         {
+            if (stoppingToken?.IsCancellationRequested ?? false)
+            {
+                scope.Rollback();
+                return;
+            }
+
             if (!txNonces.TryGetValue(tx.Signer, out var nonce) || tx.Nonce > nonce)
             {
                 txNonces = txNonces.SetItem(tx.Signer, tx.Nonce);
@@ -369,6 +401,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             foreach (var address
                      in tx.UpdatedAddresses.Select(address => address.ByteArray.ToArray()))
             {
+                if (stoppingToken?.IsCancellationRequested ?? false)
+                {
+                    scope.Rollback();
+                    return;
+                }
+
                 await Db.InsertOrIgnoreAsync(
                     "Accounts", new { Address = address, }, scope);
                 await Db.Query("AccountTransaction")
@@ -388,6 +426,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
             foreach (var customAction in customActions)
             {
+                if (stoppingToken?.IsCancellationRequested ?? false)
+                {
+                    scope.Rollback();
+                    return;
+                }
+
                 if (ActionTypeAttribute.ValueOf(customAction.GetType()) is not { } typeId)
                 {
                     continue;
@@ -413,6 +457,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
         foreach (var nonce in txNonces)
         {
+            if (stoppingToken?.IsCancellationRequested ?? false)
+            {
+                scope.Rollback();
+                return;
+            }
+
             await Db.Query("Accounts")
                 .Where(new { Address = nonce.Key.ByteArray.ToArray() })
                 .UpdateAsync(

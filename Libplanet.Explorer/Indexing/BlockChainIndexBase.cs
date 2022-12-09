@@ -110,37 +110,37 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     public abstract bool TryGetContainedBlock(TxId txId, out IndexedBlockItem containedBlock);
 
     /// <inheritdoc />
-    public void AddBlock<T>(Block<T> block)
+    public void AddBlock<T>(Block<T> block, CancellationToken? stoppingToken)
         where T : IAction, new()
     {
         EnsureReady();
-        AddBlockImpl(block);
+        AddBlockImpl(block, stoppingToken);
     }
 
     /// <inheritdoc />
-    public async Task AddBlockAsync<T>(Block<T> block)
+    public async Task AddBlockAsync<T>(Block<T> block, CancellationToken? stoppingToken)
         where T : IAction, new()
     {
         EnsureReady();
-        await AddBlockAsyncImpl(block);
+        await AddBlockAsyncImpl(block, stoppingToken);
     }
 
-    void IBlockChainIndex.Prepare<T>(BlockChain<T> chain)
+    void IBlockChainIndex.Prepare<T>(BlockChain<T> chain, CancellationToken? stoppingToken)
     {
-        ((IBlockChainIndex)this).Populate<T>(chain.Store);
-        chain.TipChanged += GetTipChangedHandler(chain);
+        ((IBlockChainIndex)this).Populate<T>(chain.Store, stoppingToken);
+        chain.TipChanged += GetTipChangedHandler(chain, stoppingToken);
         MarkReady();
     }
 
     async Task IBlockChainIndex.PrepareAsync<T>(
-        BlockChain<T> chain, CancellationToken stoppingToken)
+        BlockChain<T> chain, CancellationToken? stoppingToken)
     {
         await ((IBlockChainIndex)this).PopulateAsync<T>(chain.Store, stoppingToken);
         chain.TipChanged += GetTipChangedHandler(chain, stoppingToken);
         MarkReady();
     }
 
-    void IBlockChainIndex.Populate<T>(IStore store)
+    void IBlockChainIndex.Populate<T>(IStore store, CancellationToken? stoppingToken)
     {
         var indexTip = GetTipImpl();
         var indexTipIndex = indexTip?.Index ?? -1;
@@ -191,17 +191,25 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                 Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
             }
 
-            AddBlockImpl(store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value));
+            if (stoppingToken?.IsCancellationRequested ?? false)
+            {
+                Logger.Information("Index synchronization interrupted.");
+                return;
+            }
+
+            AddBlockImpl(store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value), stoppingToken);
         }
 
-        if (indexTipIndex != chainTipIndex)
+        if (indexTipIndex >= chainTipIndex)
         {
-            Logger.Information($"[{totalBlocksToSync}/{totalBlocksToSync}] processed.");
-            Logger.Information("Finished synchronizing index.");
+            return;
         }
+
+        Logger.Information($"[{totalBlocksToSync}/{totalBlocksToSync}] processed.");
+        Logger.Information("Finished synchronizing index.");
     }
 
-    async Task IBlockChainIndex.PopulateAsync<T>(IStore store, CancellationToken stoppingToken)
+    async Task IBlockChainIndex.PopulateAsync<T>(IStore store, CancellationToken? stoppingToken)
     {
         var indexTip = await GetTipAsyncImpl();
         var indexTipIndex = indexTip?.Index ?? -1;
@@ -252,20 +260,23 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                 Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
             }
 
-            if (stoppingToken.IsCancellationRequested)
+            if (stoppingToken?.IsCancellationRequested ?? false)
             {
                 Logger.Information("Index synchronization interrupted.");
                 return;
             }
 
-            await AddBlockAsyncImpl(store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value));
+            await AddBlockAsyncImpl(
+                store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value), stoppingToken);
         }
 
-        if (indexTipIndex != chainTipIndex)
+        if (indexTipIndex >= chainTipIndex)
         {
-            Logger.Information($"[{totalBlocksToSync}/{totalBlocksToSync}] processed.");
-            Logger.Information("Finished synchronizing index.");
+            return;
         }
+
+        Logger.Information($"[{totalBlocksToSync}/{totalBlocksToSync}] processed.");
+        Logger.Information("Finished synchronizing index.");
     }
 
     protected abstract IndexedBlockItem? GetTipImpl();
@@ -276,10 +287,10 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
     protected abstract Task<IndexedBlockItem> GetIndexedBlockAsyncImpl(long index);
 
-    protected abstract Task AddBlockAsyncImpl<T>(Block<T> block)
+    protected abstract Task AddBlockAsyncImpl<T>(Block<T> block, CancellationToken? token)
         where T : IAction, new();
 
-    protected abstract void AddBlockImpl<T>(Block<T> block)
+    protected abstract void AddBlockImpl<T>(Block<T> block, CancellationToken? token)
         where T : IAction, new();
 
     protected void EnsureReady()
@@ -305,18 +316,18 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     }
 
     private EventHandler<(Block<T> OldTip, Block<T> NewTip)> GetTipChangedHandler<T>(
-        BlockChain<T> chain, CancellationToken? token = null)
+        BlockChain<T> chain, CancellationToken? stoppingToken = null)
         where T : IAction, new() =>
         (_, e) =>
         {
-            if (token?.IsCancellationRequested ?? false)
-            {
-                return;
-            }
-
             for (var i = e.OldTip.Index + 1; i <= e.NewTip.Index; i++)
             {
-                AddBlock(chain[i]);
+                if (stoppingToken?.IsCancellationRequested ?? false)
+                {
+                    return;
+                }
+
+                AddBlock(chain[i], stoppingToken);
             }
         };
 }
