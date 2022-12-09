@@ -13,6 +13,7 @@ projects=(
   "Libplanet.Tools"
   "Libplanet.Explorer"
   "Libplanet.Explorer.Executable"
+  "Libplanet.Explorer.Cocona"
   "Libplanet.Extensions.Cocona"
 )
 configuration=Release

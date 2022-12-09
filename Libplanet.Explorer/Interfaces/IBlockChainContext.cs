@@ -20,8 +20,6 @@ namespace Libplanet.Explorer.Interfaces
         IStore Store { get; }
 
         IBlockChainIndex Index { get; }
-
-        AsyncManualResetEvent ExplorerReady { get; }
     }
 
     public static class BlockChainContext
