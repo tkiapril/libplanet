@@ -1,8 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using GraphQL;
 using GraphQL.Execution;
@@ -178,9 +176,6 @@ public class TransactionQueryTest
                 stateStore,
                 genesis
             );
-            Index = new RocksDbBlockChainIndex(
-                Path.Combine(Path.GetTempPath(), Path.GetRandomFileName()));
-            Index.Synchronize<T>(BlockChain.Store, CancellationToken.None);
         }
     }
 }
