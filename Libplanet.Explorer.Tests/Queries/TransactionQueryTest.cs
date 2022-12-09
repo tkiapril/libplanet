@@ -1,9 +1,7 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading.Tasks;
-using Bencodex.Types;
 using GraphQL;
 using GraphQL.Execution;
 using Libplanet.Action;
@@ -13,11 +11,14 @@ using Libplanet.Blockchain;
 using Libplanet.Blockchain.Policies;
 using Libplanet.Blocks;
 using Libplanet.Crypto;
+using Libplanet.Explorer.Indexing;
 using Libplanet.Explorer.Interfaces;
 using Libplanet.Explorer.Queries;
 using Libplanet.Store;
 using Libplanet.Store.Trie;
 using Libplanet.Tx;
+using Microsoft.Data.Sqlite;
+using Nito.AsyncEx;
 using Xunit;
 using static Libplanet.ByteUtil;
 using static Libplanet.Explorer.Tests.GraphQLTestUtils;
@@ -144,6 +145,10 @@ public class TransactionQueryTest
         public BlockChain<T> BlockChain { get; }
         public IStore Store { get; }
 
+        public IBlockChainIndex Index { get; }
+
+        public AsyncManualResetEvent ExplorerReady => null;
+
         public MockBlockChainContext()
         {
             Store = new MemoryStore();
@@ -172,6 +177,8 @@ public class TransactionQueryTest
                 stateStore,
                 genesis
             );
+            Index = new SqliteBlockChainIndex(new SqliteConnection("Data Source=:memory:"));
+            Index.Prepare(BlockChain);
         }
     }
 }

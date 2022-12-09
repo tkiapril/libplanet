@@ -6,11 +6,9 @@ using GraphQL;
 using GraphQL.Types;
 using Libplanet.Action;
 using Libplanet.Blockchain;
-using Libplanet.Blocks;
 using Libplanet.Crypto;
 using Libplanet.Explorer.GraphTypes;
 using Libplanet.Explorer.Interfaces;
-using Libplanet.Store;
 using Libplanet.Tx;
 
 namespace Libplanet.Explorer.Queries
@@ -59,7 +57,7 @@ namespace Libplanet.Explorer.Queries
                     var involved = context.GetArgument<Address?>("involvedAddress");
                     bool desc = context.GetArgument<bool>("desc");
                     long offset = context.GetArgument<long>("offset");
-                    int? limit = context.GetArgument<int?>("limit", null);
+                    int? limit = context.GetArgument<int?>("limit");
 
                     return ExplorerQuery<T>.ListTransactions(signer, involved, desc, offset, limit);
                 }
@@ -238,12 +236,13 @@ namespace Libplanet.Explorer.Queries
                 ),
                 resolve: context =>
                 {
-                    BlockChain<T> blockChain = _context.BlockChain;
-                    IStore store = _context.Store;
-                    TxId txId = new TxId(
+                    var blockChain = _context.BlockChain;
+                    var store = _context.Store;
+                    var index = _context.Index;
+                    var txId = new TxId(
                         ByteUtil.ParseHex(context.GetArgument<string>("txId"))
                     );
-                    if (!(store.GetFirstTxIdBlockHashIndex(txId) is { } txExecutedBlockHash))
+                    if (!index.TryGetContainedBlock(txId, out var indexedBlockItem))
                     {
                         return blockChain.GetStagedTransactionIds().Contains(txId)
                             ? new TxResult(
@@ -268,11 +267,11 @@ namespace Libplanet.Explorer.Queries
 
                     try
                     {
-                        TxExecution execution = blockChain.GetTxExecution(
-                            txExecutedBlockHash,
+                        var execution = blockChain.GetTxExecution(
+                            indexedBlockItem.Hash,
                             txId
                         );
-                        Block<T> txExecutedBlock = blockChain[txExecutedBlockHash];
+                        var txExecutedBlock = blockChain[indexedBlockItem.Hash];
 
                         var updatedStates = ((TxSuccess)execution).UpdatedStates;
                         var updatedFungibleAssets = ((TxSuccess)execution).UpdatedFungibleAssets;
