@@ -3,9 +3,10 @@ using System.Runtime.CompilerServices;
 using GraphQL.Types;
 using Libplanet.Action;
 using Libplanet.Blockchain;
-using Libplanet.Explorer.GraphTypes;
+using Libplanet.Explorer.Indexing;
 using Libplanet.Explorer.Queries;
 using Libplanet.Store;
+using Nito.AsyncEx;
 
 namespace Libplanet.Explorer.Interfaces
 {
@@ -17,6 +18,10 @@ namespace Libplanet.Explorer.Interfaces
         BlockChain<T> BlockChain { get; }
 
         IStore Store { get; }
+
+        IBlockChainIndex Index { get; }
+
+        AsyncManualResetEvent ExplorerReady { get; }
     }
 
     public static class BlockChainContext
