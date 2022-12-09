@@ -14,22 +14,54 @@ To be released.
     arguments to be not `null`.  [[#2609]]
  -  `BlockChain<T>.Swap()` now throws an `InvalidOperationException` if called
     on a non-canonical chain.  [[#2619]]
+ -  (Libplanet.Explorer) Added new fields that pertain to indexing in
+    `IBlockChainContext` interface.  [[#2613]]
+     -  Added `Index` field to `IBlockChainContext` interface.
+     -  Added `ExplorerReady` field to `IBlockChainContext` interface.
+ -  (Libplanet.Explorer) GraphQL queries now require an instantiated and
+    populated `IBlockChainIndex` instance in the passed context.
+     -  *NOTE:* Now, apps using the explorer GraphQL queries must run
+       `PrepareIndexService` and other services that may alter the
+       `BlockChain<T>` status must wait for the `AsyncManualResetEvent` signal
+       that was passwd to the `PrepareIndexService` before they can start
+       working.  [[#2613]]
 
 ### Backward-incompatible network protocol changes
 
 ### Backward-incompatible storage format changes
 
 ### Added APIs
+ -  (Libplanet.Explorer) Added several interfacess and classes that pertain to
+    blockchain indexing.  [[#2613]]
+     -  Added `IBlockChainIndex` interface.
+     -  Added `BlockChainIndexBase` abstract class.
+     -  Added `SqliteBlockChainIndex` class.
+     -  Added `IndexedBlockItem` class.
+     -  Added `IndexedTransactionItem` class.
+     -  Added `PrepareIndexService` class.
+     -  Added `QueryFactoryExtensions` static class.
+     -  Added `IndexMismatchException` class.
+     -  Added `IndexNotReadyException` class.
+ -  (Libplanet.Explorer.Cocona) New project was added to provide Cocona
+    commands related to *Libplanet.Explorer* project.  [[#2613]]
+     -  Added `IndexCommand` Cocona command class.
 
 ### Behavioral changes
+ -  (Libplanet.Explorer) Queries that can benefit from indexes now uses
+    `IBlockChainIndex` for indexing.  [[#2613]]
 
 ### Bug fixes
 
 ### Dependencies
 
 ### CLI tools
+ -  (Libplanet.Explorer.Executable) Project is now deprecated. It is currently
+    nonfunctional.  [[#2243], [#2588]]
 
+[#2243]: https://github.com/planetarium/libplanet/discussions/2243
+[#2588]: https://github.com/planetarium/libplanet/discussions/2588
 [#2609]: https://github.com/planetarium/libplanet/pull/2609
+[#2613]: https://github.com/planetarium/libplanet/pull/2613
 [#2619]: https://github.com/planetarium/libplanet/pull/2619
 
 

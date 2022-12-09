@@ -53,7 +53,7 @@ namespace Libplanet.Explorer.Cocona.Commands
             {
                 return new SqliteBlockChainIndex(
                     new SqliteConnection(
-                        $"Data Source={string.Join('+', uriString.Split('+')[1..])}"));
+                        $"Data Source={string.Join('+', uri.ToString().Split('+')[1..])}"));
             }
 
             throw new ArgumentException(
