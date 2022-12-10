@@ -60,8 +60,20 @@ public abstract class BlockChainIndexTest
         await Assert.ThrowsAsync<IndexNotReadyException>(
             async () => await unpreparedIndex.AddBlockAsync(ChainFx.Chain[0]));
 
+        // ReSharper disable once MethodHasAsyncOverload
         unpreparedIndex.Prepare(ChainFx.Chain);
-        await Fx.CreateEphemeralIndexInstance().PrepareAsync(ChainFx.Chain, CancellationToken.None);
+        var populatedIndex = Fx.CreateEphemeralIndexInstance();
+        await populatedIndex.PrepareAsync(ChainFx.Chain, CancellationToken.None);
+
+        var forkedChain = ChainFx.Chain.Fork(ChainFx.Chain.Tip.PreviousHash!.Value);
+        await forkedChain.MineBlock(ChainFx.PrivateKeys[0]);
+        // ReSharper disable once MethodHasAsyncOverload
+        populatedIndex.AddBlock(ChainFx.Chain.Tip);
+        await populatedIndex.AddBlockAsync(ChainFx.Chain.Tip);
+        Assert.Throws<IndexMismatchException>(
+            () => populatedIndex.AddBlock(forkedChain.Tip));
+        await Assert.ThrowsAsync<IndexMismatchException>(
+            async () => await populatedIndex.AddBlockAsync(forkedChain.Tip));
     }
 
     [Fact]

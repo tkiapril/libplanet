@@ -229,15 +229,39 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
         using var scope = Db.Connection.BeginTransaction();
         Db.InsertOrIgnore("Accounts", new { Address = minerAddress }, scope);
-        Db.Query("Blocks")
-            .Insert(
-                new
-                {
-                    Hash = blockHash,
-                    Index = block.Index,
-                    MinerAddress = minerAddress,
-                },
-                scope);
+        try
+        {
+            Db.Query("Blocks")
+                .Insert(
+                    new
+                    {
+                        Hash = blockHash,
+                        Index = block.Index,
+                        MinerAddress = minerAddress,
+                    },
+                    scope);
+        }
+        catch (SqliteException e)
+        {
+            scope.Rollback();
+            if (e.SqliteExtendedErrorCode != 1555 && e.SqliteExtendedErrorCode != 2067)
+            {
+                throw;
+            }
+
+            var index = Db.Query("Blocks")
+                .Select("Index")
+                .Where(new { Hash = block.Hash.ByteArray.ToArray(), Index = block.Index })
+                .FirstOrDefault<long?>(scope);
+
+            if (index is not null)
+            {
+                return;
+            }
+
+            throw new IndexMismatchException(
+                block.Index, GetTipImpl()!.Value.Hash, block.Hash);
+        }
 
         var txNonces = ImmutableDictionary<Address, long>.Empty;
 
@@ -356,15 +380,39 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
         using var scope = Db.Connection.BeginTransaction();
         await Db.InsertOrIgnoreAsync("Accounts", new { Address = minerAddress }, scope);
-        await Db.Query("Blocks")
-            .InsertAsync(
-                new
-                {
-                    Hash = blockHash,
-                    Index = block.Index,
-                    MinerAddress = minerAddress,
-                },
-                scope);
+        try
+        {
+            await Db.Query("Blocks")
+                .InsertAsync(
+                    new
+                    {
+                        Hash = blockHash,
+                        Index = block.Index,
+                        MinerAddress = minerAddress,
+                    },
+                    scope);
+        }
+        catch (SqliteException e)
+        {
+            scope.Rollback();
+            if (e.SqliteExtendedErrorCode != 1555 && e.SqliteExtendedErrorCode != 2067)
+            {
+                throw;
+            }
+
+            var index = await Db.Query("Blocks")
+                .Select("Index")
+                .Where(new { Hash = block.Hash.ByteArray.ToArray(), Index = block.Index })
+                .FirstOrDefaultAsync<long?>(scope);
+
+            if (index is not null)
+            {
+                return;
+            }
+
+            throw new IndexMismatchException(
+                block.Index, (await GetTipAsyncImpl())!.Value.Hash, block.Hash);
+        }
 
         var txNonces = ImmutableDictionary<Address, long>.Empty;
 

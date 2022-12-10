@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Libplanet.Explorer.Migrations
 {
     [DbContext(typeof(SqliteBlockChainIndexEfContext))]
-    [Migration("20221208082107_initial")]
-    partial class initial
+    [Migration("20221212025816_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -76,6 +76,9 @@ namespace Libplanet.Explorer.Migrations
                         .HasColumnType("binary(20)");
 
                     b.HasKey("Hash");
+
+                    b.HasIndex("Index")
+                        .IsUnique();
 
                     b.HasIndex("MinerAddress");
 

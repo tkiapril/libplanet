@@ -173,6 +173,9 @@ public interface IBlockChainIndex
     /// <param name="token">A token to mark the cancellation of processing.</param>
     /// <typeparam name="T">An user-provided <see cref="IAction"/> type.</typeparam>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
+    /// <exception cref="IndexMismatchException">Thrown if the index already has seen a block in
+    /// the height of the given block, but the hash of the indexed block and the given block is
+    /// different.</exception>
     void AddBlock<T>(Block<T> block, CancellationToken? token = null)
         where T : IAction, new();
 

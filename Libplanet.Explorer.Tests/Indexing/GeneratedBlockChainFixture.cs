@@ -15,11 +15,11 @@ namespace Libplanet.Explorer.Tests.Indexing;
 
 public class GeneratedBlockChainFixture
 {
+    public static Currency TestCurrency => Currency.Uncapped("TEST", 0, null);
+
     public BlockChain<SimpleAction> Chain { get; }
 
     public ImmutableArray<PrivateKey> PrivateKeys { get; }
-
-    public Currency TestCurrency => Currency.Uncapped("TEST", 0, null);
 
     public ImmutableDictionary<Address, ImmutableArray<Block<SimpleAction>>> MinedBlocks { get; }
 

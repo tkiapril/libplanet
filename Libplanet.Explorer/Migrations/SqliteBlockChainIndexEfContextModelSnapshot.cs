@@ -74,6 +74,9 @@ namespace Libplanet.Explorer.Migrations
 
                     b.HasKey("Hash");
 
+                    b.HasIndex("Index")
+                        .IsUnique();
+
                     b.HasIndex("MinerAddress");
 
                     b.ToTable("Blocks");

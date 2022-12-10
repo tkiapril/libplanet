@@ -174,12 +174,21 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         var chainTipIndex = store.CountIndex(chainId) - 1;
 
-        Logger.Information(
-            "Index is "
-            + (
-                indexTipIndex == chainTipIndex
-                    ? "up to date."
-                    : "out of date. Synchronizing..."));
+        if (indexTipIndex < chainTipIndex)
+        {
+            Logger.Information("Index is out of date. Synchronizing...");
+        }
+        else if (indexTipIndex == chainTipIndex)
+        {
+            Logger.Information("Index is up to date.");
+        }
+        else
+        {
+            Logger.Information(
+                "The height of the index is higher than the height of the blockchain. Index"
+                + " preparation will proceed, but if a block of an existing height and a different"
+                + $" hash is encountered, an {nameof(IndexMismatchException)} will be raised.");
+        }
 
         var totalBlocksToSync = chainTipIndex - indexTipIndex;
 
@@ -243,12 +252,21 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         var chainTipIndex = store.CountIndex(chainId) - 1;
 
-        Logger.Information(
-            "Index is "
-            + (
-                indexTipIndex == chainTipIndex
-                    ? "up to date."
-                    : "out of date. Synchronizing..."));
+        if (indexTipIndex < chainTipIndex)
+        {
+            Logger.Information("Index is out of date. Synchronizing...");
+        }
+        else if (indexTipIndex == chainTipIndex)
+        {
+            Logger.Information("Index is up to date.");
+        }
+        else
+        {
+            Logger.Information(
+                "The height of the index is higher than the height of the blockchain. Index"
+                + " preparation will proceed, but if a block of an existing height and a different"
+                + $" hash is encountered, an {nameof(IndexMismatchException)} will be raised.");
+        }
 
         var totalBlocksToSync = chainTipIndex - indexTipIndex;
 

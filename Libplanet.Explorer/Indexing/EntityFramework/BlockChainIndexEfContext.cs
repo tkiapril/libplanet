@@ -33,6 +33,10 @@ internal abstract class BlockChainIndexEfContext : DbContext
             .WithOne(block => block.Miner)
             .IsRequired();
 
+        modelBuilder.Entity<Block>()
+            .HasIndex(block => block.Index)
+            .IsUnique();
+
         modelBuilder.Entity<Transaction>()
             .HasOne(tx => tx.Signer)
             .WithMany(account => account.SignedTransactions)

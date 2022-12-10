@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Libplanet.Explorer.Migrations
 {
     /// <inheritdoc />
-    public partial class initial : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -123,6 +123,12 @@ namespace Libplanet.Explorer.Migrations
                 name: "IX_AccountTransaction_UpdatedAddressesAddress",
                 table: "AccountTransaction",
                 column: "UpdatedAddressesAddress");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Blocks_Index",
+                table: "Blocks",
+                column: "Index",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Blocks_MinerAddress",
