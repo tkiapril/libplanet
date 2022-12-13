@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Libplanet.Explorer.Cocona.Commands;
+using Libplanet.Explorer.Tests.Indexing;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -12,18 +13,19 @@ namespace Libplanet.Explorer.Cocona.Tests.Commands
         public void LoadIndexFromUri()
         {
             var tempFileName = Path.GetTempFileName();
-            IndexCommand.LoadIndexFromUri($"sqlite+file://{tempFileName}");
-            IndexCommand.LoadIndexFromUri($"sqlite3+file://{tempFileName}");
+            IndexCommand<SimpleAction>.LoadIndexFromUri($"sqlite+file://{tempFileName}");
+            IndexCommand<SimpleAction>.LoadIndexFromUri($"sqlite3+file://{tempFileName}");
             Assert.Throws<ArgumentException>(
-                () => IndexCommand.LoadIndexFromUri($"{tempFileName}"));
+                () => IndexCommand<SimpleAction>.LoadIndexFromUri($"{tempFileName}"));
             Assert.Throws<ArgumentException>(
-                () => IndexCommand.LoadIndexFromUri($"sqlite://{tempFileName}"));
+                () => IndexCommand<SimpleAction>.LoadIndexFromUri($"sqlite://{tempFileName}"));
             Assert.Throws<ArgumentException>(
-                () => IndexCommand.LoadIndexFromUri($"sqlite+://{tempFileName}"));
+                () => IndexCommand<SimpleAction>.LoadIndexFromUri($"sqlite+://{tempFileName}"));
             Assert.Throws<SqliteException>(
-                () => IndexCommand.LoadIndexFromUri($"sqlite+foo://{tempFileName}"));
+                () => IndexCommand<SimpleAction>.LoadIndexFromUri($"sqlite+foo://{tempFileName}"));
             Assert.Throws<ArgumentException>(
-                () => IndexCommand.LoadIndexFromUri($"sqlite2+file://{tempFileName}"));
+                () => IndexCommand<SimpleAction>.LoadIndexFromUri(
+                    $"sqlite2+file://{tempFileName}"));
         }
     }
 }
