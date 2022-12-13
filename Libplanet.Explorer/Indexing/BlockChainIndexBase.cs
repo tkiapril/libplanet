@@ -12,7 +12,7 @@ using Serilog;
 namespace Libplanet.Explorer.Indexing;
 
 /// <summary>
-/// A base implementation of IBlockChainIndex.
+/// A base implementation of <see cref="IBlockChainIndex"/>.
 /// </summary>
 public abstract class BlockChainIndexBase : IBlockChainIndex
 {

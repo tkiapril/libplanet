@@ -117,7 +117,7 @@ public interface IBlockChainIndex
     /// </summary>
     /// <param name="address">The address that is recorded as involved in the
     /// <see cref="Transaction{T}"/>.</param>
-    /// <param name="offset">the starting index.</param>
+    /// <param name="offset">The starting index.</param>
     /// <param name="limit">The upper limit of <see cref="Transaction{T}"/>s to return.</param>
     /// <param name="desc">Whether to return the <see cref="Transaction{T}"/>s in the descending
     /// order.</param>

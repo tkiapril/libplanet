@@ -23,7 +23,7 @@ To be released.
      -  *NOTE:* Now, apps using the explorer GraphQL queries must run
        `PrepareIndexService` and other services that may alter the
        `BlockChain<T>` status must wait for the `AsyncManualResetEvent` signal
-       that was passwd to the `PrepareIndexService` before they can start
+       that was passed to the `PrepareIndexService` before they can start
        working.  [[#2613]]
 
 ### Backward-incompatible network protocol changes
@@ -31,7 +31,7 @@ To be released.
 ### Backward-incompatible storage format changes
 
 ### Added APIs
- -  (Libplanet.Explorer) Added several interfacess and classes that pertain to
+ -  (Libplanet.Explorer) Added several interfaces and classes that pertain to
     blockchain indexing.  [[#2613]]
      -  Added `IBlockChainIndex` interface.
      -  Added `BlockChainIndexBase` abstract class.
