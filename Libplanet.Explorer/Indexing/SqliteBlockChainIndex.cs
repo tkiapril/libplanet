@@ -222,12 +222,25 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         ?? throw new IndexOutOfRangeException($"The block #{index} does not exist in the index.");
 
     /// <inheritdoc />
-    protected override void AddBlockImpl<T>(Block<T> block, CancellationToken? stoppingToken)
+    protected override void AddBlockImpl<T>(
+        Block<T> block, IAddBlockContext? context, CancellationToken? stoppingToken)
     {
         var minerAddress = block.Miner.ByteArray.ToArray();
         var blockHash = block.Hash.ByteArray.ToArray();
 
-        using var scope = Db.Connection.BeginTransaction();
+        var scope
+            = ((SqliteAddBlockContext?)context)?.Transaction ?? Db.Connection.BeginTransaction();
+        Db.Statement($"SAVEPOINT \"{block.Hash.ToString()}\"", scope);
+        void Rollback()
+        {
+            Db.Statement($"ROLLBACK TO \"{block.Hash.ToString()}\"", scope);
+            if (context is null)
+            {
+                scope.Rollback();
+                scope.Dispose();
+            }
+        }
+
         Db.InsertOrIgnore("Accounts", new { Address = minerAddress }, scope);
         try
         {
@@ -243,7 +256,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         }
         catch (SqliteException e)
         {
-            scope.Rollback();
+            Rollback();
             if (e.SqliteExtendedErrorCode != 1555 && e.SqliteExtendedErrorCode != 2067)
             {
                 throw;
@@ -252,7 +265,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             var index = Db.Query("Blocks")
                 .Select("Index")
                 .Where(new { Hash = block.Hash.ByteArray.ToArray(), Index = block.Index })
-                .FirstOrDefault<long?>(scope);
+                .FirstOrDefault<long?>();
 
             if (index is not null)
             {
@@ -269,7 +282,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
             {
-                scope.Rollback();
+                Rollback();
                 return;
             }
 
@@ -300,7 +313,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             {
                 if (stoppingToken?.IsCancellationRequested ?? false)
                 {
-                    scope.Rollback();
+                    Rollback();
                     return;
                 }
 
@@ -325,7 +338,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             {
                 if (stoppingToken?.IsCancellationRequested ?? false)
                 {
-                    scope.Rollback();
+                    Rollback();
                     return;
                 }
 
@@ -357,7 +370,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
             {
-                scope.Rollback();
+                Rollback();
                 return;
             }
 
@@ -368,17 +381,34 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     scope);
         }
 
-        scope.Commit();
+        Db.Statement($"RELEASE \"{block.Hash.ToString()}\"", scope);
+        if (context is null)
+        {
+            scope.Commit();
+            scope.Dispose();
+        }
     }
 
     /// <inheritdoc />
     protected override async Task AddBlockAsyncImpl<T>(
-        Block<T> block, CancellationToken? stoppingToken)
+        Block<T> block, IAddBlockContext? context, CancellationToken? stoppingToken)
     {
         var minerAddress = block.Miner.ByteArray.ToArray();
         var blockHash = block.Hash.ByteArray.ToArray();
 
-        using var scope = Db.Connection.BeginTransaction();
+        var scope
+            = ((SqliteAddBlockContext?)context)?.Transaction ?? Db.Connection.BeginTransaction();
+        await Db.StatementAsync($"SAVEPOINT \"{block.Hash.ToString()}\"", scope);
+        async Task Rollback()
+        {
+            await Db.StatementAsync($"ROLLBACK TO \"{block.Hash.ToString()}\"", scope);
+            if (context is null)
+            {
+                scope.Rollback();
+                scope.Dispose();
+            }
+        }
+
         await Db.InsertOrIgnoreAsync("Accounts", new { Address = minerAddress }, scope);
         try
         {
@@ -394,7 +424,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         }
         catch (SqliteException e)
         {
-            scope.Rollback();
+            await Rollback();
             if (e.SqliteExtendedErrorCode != 1555 && e.SqliteExtendedErrorCode != 2067)
             {
                 throw;
@@ -403,7 +433,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             var index = await Db.Query("Blocks")
                 .Select("Index")
                 .Where(new { Hash = block.Hash.ByteArray.ToArray(), Index = block.Index })
-                .FirstOrDefaultAsync<long?>(scope);
+                .FirstOrDefaultAsync<long?>();
 
             if (index is not null)
             {
@@ -420,7 +450,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
             {
-                scope.Rollback();
+                await Rollback();
                 return;
             }
 
@@ -451,7 +481,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             {
                 if (stoppingToken?.IsCancellationRequested ?? false)
                 {
-                    scope.Rollback();
+                    await Rollback();
                     return;
                 }
 
@@ -476,7 +506,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             {
                 if (stoppingToken?.IsCancellationRequested ?? false)
                 {
-                    scope.Rollback();
+                    await Rollback();
                     return;
                 }
 
@@ -507,7 +537,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
             {
-                scope.Rollback();
+                await Rollback();
                 return;
             }
 
@@ -518,6 +548,34 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     scope);
         }
 
-        scope.Commit();
+        await Db.StatementAsync($"RELEASE \"{block.Hash.ToString()}\"", scope);
+        if (context is null)
+        {
+            scope.Commit();
+            scope.Dispose();
+        }
+    }
+
+    protected override IAddBlockContext GetAddBlockContext() =>
+        new SqliteAddBlockContext(Db.Connection.BeginTransaction());
+
+    protected override void FinalizeAddBlockContext(IAddBlockContext context, bool commit)
+    {
+        if (context is not SqliteAddBlockContext sqliteContext)
+        {
+            throw new ArgumentException(
+                $"Received an unsupported {nameof(IAddBlockContext)}: {context.GetType()}");
+        }
+
+        if (commit)
+        {
+            sqliteContext.Transaction.Commit();
+        }
+        else
+        {
+            sqliteContext.Transaction.Rollback();
+        }
+
+        sqliteContext.Transaction.Dispose();
     }
 }

@@ -112,12 +112,12 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     /// <inheritdoc />
     void IBlockChainIndex.AddBlock<T>(
         Block<T> block, CancellationToken? stoppingToken) =>
-        AddBlockImpl(block, stoppingToken);
+        AddBlockImpl(block, null, stoppingToken);
 
     /// <inheritdoc />
     async Task IBlockChainIndex.AddBlockAsync<T>(
         Block<T> block, CancellationToken? stoppingToken) =>
-        await AddBlockAsyncImpl(block, stoppingToken);
+        await AddBlockAsyncImpl(block, null, stoppingToken);
 
     void IBlockChainIndex.Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken)
     {
@@ -186,6 +186,8 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         Logger.Information("Index is out of date. Synchronizing...");
 
         long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
+
+        var addBlockContext = GetAddBlockContext();
         for (var i = indexTipIndex + 1; i <= chainTipIndex; i++)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
@@ -196,6 +198,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
             AddBlockImpl(
                 store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value),
+                addBlockContext,
                 stoppingToken);
 
             processedBlockCount = i - indexTipIndex;
@@ -204,6 +207,8 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                 Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
             }
         }
+
+        FinalizeAddBlockContext(addBlockContext, true);
 
         Logger.Information($"{processedBlockCount} out of {totalBlocksToSync} blocks processed.");
 
@@ -265,6 +270,8 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         Logger.Information("Index is out of date. Synchronizing...");
 
         long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
+
+        var addBlockContext = GetAddBlockContext();
         for (var i = indexTipIndex + 1; i <= chainTipIndex; i++)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
@@ -275,6 +282,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
             await AddBlockAsyncImpl(
                 store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value),
+                addBlockContext,
                 stoppingToken);
 
             processedBlockCount = i - indexTipIndex;
@@ -283,6 +291,8 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                 Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
             }
         }
+
+        FinalizeAddBlockContext(addBlockContext, true);
 
         Logger.Information($"{processedBlockCount} out of {totalBlocksToSync} blocks processed.");
 
@@ -300,11 +310,28 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
     protected abstract Task<IndexedBlockItem> GetIndexedBlockAsyncImpl(long index);
 
-    protected abstract void AddBlockImpl<T>(Block<T> block, CancellationToken? token)
+    protected abstract void AddBlockImpl<T>(
+        Block<T> block, IAddBlockContext? context, CancellationToken? token)
         where T : IAction, new();
 
-    protected abstract Task AddBlockAsyncImpl<T>(Block<T> block, CancellationToken? token)
+    protected abstract Task AddBlockAsyncImpl<T>(
+        Block<T> block, IAddBlockContext? context, CancellationToken? token)
         where T : IAction, new();
+
+    /// <summary>
+    /// Get a context that can be consumed by <see cref="AddBlock{T}"/> and
+    /// <see cref="AddBlockAsync{T}"/> (e.g. <see cref="System.Data.IDbTransaction"/> for batch
+    /// processing.
+    /// </summary>
+    /// <returns>A context that can be consumed by <see cref="AddBlock{T}"/>.</returns>
+    protected abstract IAddBlockContext GetAddBlockContext();
+
+    /// <summary>
+    /// Finalizes the data for a context gained from <see cref="GetAddBlockContext"/>.
+    /// </summary>
+    /// <param name="context">A context gained from <see cref="GetAddBlockContext"/>.</param>
+    /// <param name="commit">If true, commit the data, and if false, discard the data.</param>
+    protected abstract void FinalizeAddBlockContext(IAddBlockContext context, bool commit);
 
     protected void EnsureReady()
     {
@@ -333,6 +360,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         where T : IAction, new() =>
         (_, e) =>
         {
+            var addBlockContext = GetAddBlockContext();
             for (var i = e.OldTip.Index + 1; i <= e.NewTip.Index; i++)
             {
                 if (stoppingToken?.IsCancellationRequested ?? false)
@@ -340,7 +368,9 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                     break;
                 }
 
-                AddBlockImpl(chain[i], stoppingToken);
+                AddBlockImpl(chain[i], addBlockContext, stoppingToken);
             }
+
+            FinalizeAddBlockContext(addBlockContext, true);
         };
 }
