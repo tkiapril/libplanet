@@ -168,48 +168,49 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         var chainTipIndex = store.CountIndex(chainId) - 1;
 
-        if (indexTipIndex < chainTipIndex)
-        {
-            Logger.Information("Index is out of date. Synchronizing...");
-        }
-        else if (indexTipIndex == chainTipIndex)
+        if (indexTipIndex == chainTipIndex)
         {
             Logger.Information("Index is up to date.");
+            return;
         }
-        else
+
+        if (indexTipIndex > chainTipIndex)
         {
             Logger.Information(
                 "The height of the index is higher than the height of the blockchain. Index"
                 + " preparation will proceed, but if a block of an existing height and a different"
                 + $" hash is encountered, an {nameof(IndexMismatchException)} will be raised.");
-        }
-
-        var totalBlocksToSync = chainTipIndex - indexTipIndex;
-
-        for (var i = indexTipIndex + 1; i <= chainTipIndex; i++)
-        {
-            var processedBlockCount = i - indexTipIndex - 1;
-            if (processedBlockCount % 100 == 0)
-            {
-                Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
-            }
-
-            if (stoppingToken?.IsCancellationRequested ?? false)
-            {
-                Logger.Information("Index synchronization interrupted.");
-                return;
-            }
-
-            AddBlockImpl(store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value), stoppingToken);
-        }
-
-        if (indexTipIndex >= chainTipIndex)
-        {
             return;
         }
 
-        Logger.Information($"[{totalBlocksToSync}/{totalBlocksToSync}] processed.");
-        Logger.Information("Finished synchronizing index.");
+        Logger.Information("Index is out of date. Synchronizing...");
+
+        long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
+        for (var i = indexTipIndex + 1; i <= chainTipIndex; i++)
+        {
+            if (stoppingToken?.IsCancellationRequested ?? false)
+            {
+                Logger.Information("Index synchronization interrupted.");
+                break;
+            }
+
+            AddBlockImpl(
+                store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value),
+                stoppingToken);
+
+            processedBlockCount = i - indexTipIndex;
+            if (processedBlockCount % 1000 == 0)
+            {
+                Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
+            }
+        }
+
+        Logger.Information($"{processedBlockCount} out of {totalBlocksToSync} blocks processed.");
+
+        if (totalBlocksToSync == processedBlockCount)
+        {
+            Logger.Information("Finished synchronizing index.");
+        }
     }
 
     async Task IBlockChainIndex.PopulateAsync<T>(IStore store, CancellationToken? stoppingToken)
@@ -246,49 +247,49 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         var chainTipIndex = store.CountIndex(chainId) - 1;
 
-        if (indexTipIndex < chainTipIndex)
-        {
-            Logger.Information("Index is out of date. Synchronizing...");
-        }
-        else if (indexTipIndex == chainTipIndex)
+        if (indexTipIndex == chainTipIndex)
         {
             Logger.Information("Index is up to date.");
+            return;
         }
-        else
+
+        if (indexTipIndex > chainTipIndex)
         {
             Logger.Information(
                 "The height of the index is higher than the height of the blockchain. Index"
                 + " preparation will proceed, but if a block of an existing height and a different"
                 + $" hash is encountered, an {nameof(IndexMismatchException)} will be raised.");
-        }
-
-        var totalBlocksToSync = chainTipIndex - indexTipIndex;
-
-        for (var i = indexTipIndex + 1; i <= chainTipIndex; i++)
-        {
-            var processedBlockCount = i - indexTipIndex - 1;
-            if (processedBlockCount % 100 == 0)
-            {
-                Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
-            }
-
-            if (stoppingToken?.IsCancellationRequested ?? false)
-            {
-                Logger.Information("Index synchronization interrupted.");
-                return;
-            }
-
-            await AddBlockAsyncImpl(
-                store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value), stoppingToken);
-        }
-
-        if (indexTipIndex >= chainTipIndex)
-        {
             return;
         }
 
-        Logger.Information($"[{totalBlocksToSync}/{totalBlocksToSync}] processed.");
-        Logger.Information("Finished synchronizing index.");
+        Logger.Information("Index is out of date. Synchronizing...");
+
+        long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
+        for (var i = indexTipIndex + 1; i <= chainTipIndex; i++)
+        {
+            if (stoppingToken?.IsCancellationRequested ?? false)
+            {
+                Logger.Information("Index synchronization interrupted.");
+                break;
+            }
+
+            await AddBlockAsyncImpl(
+                store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value),
+                stoppingToken);
+
+            processedBlockCount = i - indexTipIndex;
+            if (processedBlockCount % 1000 == 0)
+            {
+                Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
+            }
+        }
+
+        Logger.Information($"{processedBlockCount} out of {totalBlocksToSync} blocks processed.");
+
+        if (totalBlocksToSync == processedBlockCount)
+        {
+            Logger.Information("Finished synchronizing index.");
+        }
     }
 
     protected abstract IndexedBlockItem? GetTipImpl();
@@ -299,10 +300,10 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
     protected abstract Task<IndexedBlockItem> GetIndexedBlockAsyncImpl(long index);
 
-    protected abstract Task AddBlockAsyncImpl<T>(Block<T> block, CancellationToken? token)
+    protected abstract void AddBlockImpl<T>(Block<T> block, CancellationToken? token)
         where T : IAction, new();
 
-    protected abstract void AddBlockImpl<T>(Block<T> block, CancellationToken? token)
+    protected abstract Task AddBlockAsyncImpl<T>(Block<T> block, CancellationToken? token)
         where T : IAction, new();
 
     protected void EnsureReady()
@@ -336,10 +337,10 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             {
                 if (stoppingToken?.IsCancellationRequested ?? false)
                 {
-                    return;
+                    break;
                 }
 
-                ((IBlockChainIndex)this).AddBlock(chain[i], stoppingToken);
+                AddBlockImpl(chain[i], stoppingToken);
             }
         };
 }
