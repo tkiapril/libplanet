@@ -110,20 +110,14 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     public abstract bool TryGetContainedBlock(TxId txId, out IndexedBlockItem containedBlock);
 
     /// <inheritdoc />
-    public void AddBlock<T>(Block<T> block, CancellationToken? stoppingToken)
-        where T : IAction, new()
-    {
-        EnsureReady();
+    void IBlockChainIndex.AddBlock<T>(
+        Block<T> block, CancellationToken? stoppingToken) =>
         AddBlockImpl(block, stoppingToken);
-    }
 
     /// <inheritdoc />
-    public async Task AddBlockAsync<T>(Block<T> block, CancellationToken? stoppingToken)
-        where T : IAction, new()
-    {
-        EnsureReady();
+    async Task IBlockChainIndex.AddBlockAsync<T>(
+        Block<T> block, CancellationToken? stoppingToken) =>
         await AddBlockAsyncImpl(block, stoppingToken);
-    }
 
     void IBlockChainIndex.Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken)
     {
@@ -345,7 +339,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                     return;
                 }
 
-                AddBlock(chain[i], stoppingToken);
+                ((IBlockChainIndex)this).AddBlock(chain[i], stoppingToken);
             }
         };
 }

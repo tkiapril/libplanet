@@ -176,11 +176,11 @@ public interface IBlockChainIndex
     /// <exception cref="IndexMismatchException">Thrown if the index already has seen a block in
     /// the height of the given block, but the hash of the indexed block and the given block is
     /// different.</exception>
-    void AddBlock<T>(Block<T> block, CancellationToken? token = null)
+    internal void AddBlock<T>(Block<T> block, CancellationToken? token = null)
         where T : IAction, new();
 
     /// <inheritdoc cref="AddBlock{T}"/>
-    Task AddBlockAsync<T>(Block<T> block, CancellationToken? token = null)
+    internal Task AddBlockAsync<T>(Block<T> block, CancellationToken? token = null)
         where T : IAction, new();
 
     internal void Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)

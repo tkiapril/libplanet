@@ -56,9 +56,6 @@ public abstract class BlockChainIndexTest
             async () => await unpreparedIndex.GetIndexedBlockAsync(0));
         Assert.Throws<IndexNotReadyException>(
             () => unpreparedIndex.TryGetContainedBlock(new TxId(), out _));
-        Assert.Throws<IndexNotReadyException>(() => unpreparedIndex.AddBlock(ChainFx.Chain[0]));
-        await Assert.ThrowsAsync<IndexNotReadyException>(
-            async () => await unpreparedIndex.AddBlockAsync(ChainFx.Chain[0]));
 
         // ReSharper disable once MethodHasAsyncOverload
         unpreparedIndex.Bind(ChainFx.Chain);
