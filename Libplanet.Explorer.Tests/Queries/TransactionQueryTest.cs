@@ -178,7 +178,7 @@ public class TransactionQueryTest
                 genesis
             );
             Index = new SqliteBlockChainIndex(new SqliteConnection("Data Source=:memory:"));
-            Index.Prepare(BlockChain);
+            Index.Bind(BlockChain);
         }
     }
 }

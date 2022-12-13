@@ -38,7 +38,7 @@ public class PrepareIndexService<T> : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _index.PrepareAsync(_chain, stoppingToken);
+        await _index.BindAsync(_chain, stoppingToken);
         _done.Set();
     }
 }

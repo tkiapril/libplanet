@@ -62,7 +62,7 @@ namespace Libplanet.Explorer
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             var ctx = app.ApplicationServices.GetRequiredService<IBlockChainContext<T>>();
-            ctx.Index.Prepare(ctx.BlockChain);
+            ctx.Index.Bind(ctx.BlockChain);
             ctx.ExplorerReady.Set();
 
             if (env.IsDevelopment())

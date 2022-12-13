@@ -183,10 +183,10 @@ public interface IBlockChainIndex
     Task AddBlockAsync<T>(Block<T> block, CancellationToken? token = null)
         where T : IAction, new();
 
-    internal void Prepare<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)
+    internal void Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)
         where T : IAction, new();
 
-    internal Task PrepareAsync<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)
+    internal Task BindAsync<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)
         where T : IAction, new();
 
     internal void Populate<T>(IStore store, CancellationToken? stoppingToken = null)

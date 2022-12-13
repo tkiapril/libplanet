@@ -12,7 +12,7 @@ public abstract class BlockChainIndexFixture<T> : IBlockChainIndexFixture<T>
     protected BlockChainIndexFixture(BlockChain<T> chain, IBlockChainIndex index)
     {
         Index = index;
-        Index.Prepare(chain);
+        Index.Bind(chain);
     }
 
     public abstract IBlockChainIndex CreateEphemeralIndexInstance();

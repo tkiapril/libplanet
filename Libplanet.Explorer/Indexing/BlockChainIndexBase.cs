@@ -125,14 +125,14 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         await AddBlockAsyncImpl(block, stoppingToken);
     }
 
-    void IBlockChainIndex.Prepare<T>(BlockChain<T> chain, CancellationToken? stoppingToken)
+    void IBlockChainIndex.Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken)
     {
         ((IBlockChainIndex)this).Populate<T>(chain.Store, stoppingToken);
         chain.TipChanged += GetTipChangedHandler(chain, stoppingToken);
         MarkReady();
     }
 
-    async Task IBlockChainIndex.PrepareAsync<T>(
+    async Task IBlockChainIndex.BindAsync<T>(
         BlockChain<T> chain, CancellationToken? stoppingToken)
     {
         await ((IBlockChainIndex)this).PopulateAsync<T>(chain.Store, stoppingToken);

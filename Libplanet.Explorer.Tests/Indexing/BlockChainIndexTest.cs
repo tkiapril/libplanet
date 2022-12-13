@@ -61,9 +61,9 @@ public abstract class BlockChainIndexTest
             async () => await unpreparedIndex.AddBlockAsync(ChainFx.Chain[0]));
 
         // ReSharper disable once MethodHasAsyncOverload
-        unpreparedIndex.Prepare(ChainFx.Chain);
+        unpreparedIndex.Bind(ChainFx.Chain);
         var populatedIndex = Fx.CreateEphemeralIndexInstance();
-        await populatedIndex.PrepareAsync(ChainFx.Chain, CancellationToken.None);
+        await populatedIndex.BindAsync(ChainFx.Chain, CancellationToken.None);
 
         var forkedChain = ChainFx.Chain.Fork(ChainFx.Chain.Tip.PreviousHash!.Value);
         await forkedChain.MineBlock(ChainFx.PrivateKeys[0]);
