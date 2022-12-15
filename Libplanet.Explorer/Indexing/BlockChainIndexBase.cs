@@ -138,17 +138,23 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     {
         var indexTip = GetTipImpl();
         var indexTipIndex = indexTip?.Index ?? -1;
-        var indexTipHash = indexTip?.Hash ?? null;
         var chainId = store.GetCanonicalChainId()
                       ?? throw new InvalidOperationException(
                           "The store does not contain a valid chain.");
+        var chainTipIndex = store.CountIndex(chainId) - 1;
 
         if (indexTipIndex >= 0)
         {
             var indexHash = GetIndexedBlockImpl(0).Hash;
-            var chainHash = store.IndexBlockHash(chainId, 0)
-                            ?? throw new InvalidOperationException(
-                                "The store does not contain a valid genesis block.");
+            using var chainIndexEnumerator =
+                store.IterateIndexes(chainId, limit: 1).GetEnumerator();
+            if (!chainIndexEnumerator.MoveNext())
+            {
+                throw new InvalidOperationException(
+                    "The store does not contain a valid genesis block.");
+            }
+
+            var chainHash = chainIndexEnumerator.Current;
             if (!indexHash.Equals(chainHash))
             {
                 throw new IndexMismatchException(0, indexHash, chainHash);
@@ -157,16 +163,20 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         if (indexTipIndex >= 1)
         {
-            var chainHash = store.IndexBlockHash(chainId, indexTipIndex)
-                            ?? throw new IndexMismatchException(
-                                indexTipIndex, indexTipHash!.Value, null);
-            if (!indexTipHash!.Value.Equals(chainHash))
+            var indexTipHash = indexTip!.Value.Hash;
+            var commonLatestIndex = Math.Min(indexTipIndex, chainTipIndex);
+            using var chainIndexEnumerator =
+                store.IterateIndexes(chainId, (int)commonLatestIndex, limit: 1).GetEnumerator();
+            BlockHash? chainTipHash = chainIndexEnumerator.MoveNext()
+                ? chainIndexEnumerator.Current
+                : null;
+            if (chainTipHash is not { } chainTipHashValue
+                || !indexTipHash.Equals(chainTipHashValue))
             {
-                throw new IndexMismatchException(indexTipIndex, indexTipHash.Value, chainHash);
+                throw new IndexMismatchException(
+                    indexTipIndex, indexTipHash, chainTipHash);
             }
         }
-
-        var chainTipIndex = store.CountIndex(chainId) - 1;
 
         if (indexTipIndex == chainTipIndex)
         {
@@ -187,8 +197,10 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
 
+        using var indexEnumerator =
+            store.IterateIndexes(chainId, (int)indexTipIndex + 1).GetEnumerator();
         var addBlockContext = GetAddBlockContext();
-        for (var i = indexTipIndex + 1; i <= chainTipIndex; i++)
+        while (indexEnumerator.MoveNext() && indexTipIndex + processedBlockCount < chainTipIndex)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
             {
@@ -197,12 +209,11 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             }
 
             AddBlockImpl(
-                store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value),
+                store.GetBlock<T>(indexEnumerator.Current),
                 addBlockContext,
                 stoppingToken);
 
-            processedBlockCount = i - indexTipIndex;
-            if (processedBlockCount % 1000 == 0)
+            if (++processedBlockCount % 1000 == 0)
             {
                 Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
             }
@@ -222,17 +233,23 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     {
         var indexTip = await GetTipAsyncImpl();
         var indexTipIndex = indexTip?.Index ?? -1;
-        var indexTipHash = indexTip?.Hash ?? null;
         var chainId = store.GetCanonicalChainId()
                       ?? throw new InvalidOperationException(
                           "The store does not contain a valid chain.");
+        var chainTipIndex = store.CountIndex(chainId) - 1;
 
         if (indexTipIndex >= 0)
         {
             var indexHash = (await GetIndexedBlockAsyncImpl(0)).Hash;
-            var chainHash = store.IndexBlockHash(chainId, 0)
-                            ?? throw new InvalidOperationException(
-                                "The store does not contain a valid genesis block.");
+            using var chainIndexEnumerator =
+                store.IterateIndexes(chainId, limit: 1).GetEnumerator();
+            if (!chainIndexEnumerator.MoveNext())
+            {
+                throw new InvalidOperationException(
+                    "The store does not contain a valid genesis block.");
+            }
+
+            var chainHash = chainIndexEnumerator.Current;
             if (!indexHash.Equals(chainHash))
             {
                 throw new IndexMismatchException(0, indexHash, chainHash);
@@ -241,16 +258,20 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         if (indexTipIndex >= 1)
         {
-            var chainHash = store.IndexBlockHash(chainId, indexTipIndex)
-                            ?? throw new IndexMismatchException(
-                                indexTipIndex, indexTipHash!.Value, null);
-            if (!indexTipHash!.Value.Equals(chainHash))
+            var indexTipHash = indexTip!.Value.Hash;
+            var commonLatestIndex = Math.Min(indexTipIndex, chainTipIndex);
+            using var chainIndexEnumerator =
+                store.IterateIndexes(chainId, (int)commonLatestIndex, limit: 1).GetEnumerator();
+            BlockHash? chainTipHash = chainIndexEnumerator.MoveNext()
+                ? chainIndexEnumerator.Current
+                : null;
+            if (chainTipHash is not { } chainTipHashValue
+                || !indexTipHash.Equals(chainTipHashValue))
             {
-                throw new IndexMismatchException(indexTipIndex, indexTipHash.Value, chainHash);
+                throw new IndexMismatchException(
+                    indexTipIndex, indexTipHash, chainTipHash);
             }
         }
-
-        var chainTipIndex = store.CountIndex(chainId) - 1;
 
         if (indexTipIndex == chainTipIndex)
         {
@@ -271,8 +292,10 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
 
+        using var indexEnumerator =
+            store.IterateIndexes(chainId, (int)indexTipIndex + 1).GetEnumerator();
         var addBlockContext = GetAddBlockContext();
-        for (var i = indexTipIndex + 1; i <= chainTipIndex; i++)
+        while (indexEnumerator.MoveNext() && indexTipIndex + processedBlockCount < chainTipIndex)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
             {
@@ -281,12 +304,11 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             }
 
             await AddBlockAsyncImpl(
-                store.GetBlock<T>(store.IndexBlockHash(chainId, i)!.Value),
+                store.GetBlock<T>(indexEnumerator.Current),
                 addBlockContext,
                 stoppingToken);
 
-            processedBlockCount = i - indexTipIndex;
-            if (processedBlockCount % 1000 == 0)
+            if (++processedBlockCount % 1000 == 0)
             {
                 Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
             }
