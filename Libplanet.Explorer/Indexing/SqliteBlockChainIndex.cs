@@ -286,27 +286,43 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 return;
             }
 
+            var signerAddress = tx.Signer.ByteArray.ToArray();
+            var txId = tx.Id.ByteArray.ToArray();
+            short? systemActionTypeId = tx.SystemAction is { } systemAction
+                ? (short)Registry.Serialize(systemAction).GetValue<Integer>("type_id")
+                : null;
+
+            Db.Statement($"SAVEPOINT \"{tx.Id.ToString()}\"", scope);
+            Db.InsertOrIgnore("Accounts", new { Address = signerAddress }, scope);
+            try
+            {
+                Db.Query("Transactions")
+                    .Insert(
+                        new
+                        {
+                            Id = txId,
+                            SystemActionTypeId = systemActionTypeId,
+                            SignerAddress = signerAddress,
+                            BlockHash = blockHash,
+                        },
+                        scope);
+            }
+            catch (SqliteException e)
+            {
+                Db.Statement($"ROLLBACK TO \"{tx.Id.ToString()}\"", scope);
+                if (e.SqliteExtendedErrorCode != 1555 && e.SqliteExtendedErrorCode != 2067)
+                {
+                    Rollback();
+                    throw;
+                }
+
+                continue;
+            }
+
             if (!txNonces.TryGetValue(tx.Signer, out var nonce) || tx.Nonce > nonce)
             {
                 txNonces = txNonces.SetItem(tx.Signer, tx.Nonce);
             }
-
-            var signerAddress = tx.Signer.ByteArray.ToArray();
-            var txId = tx.Id.ByteArray.ToArray();
-            Db.InsertOrIgnore("Accounts", new { Address = signerAddress }, scope);
-
-            short? systemActionTypeId = tx.SystemAction is { } systemAction
-                ? (short)Registry.Serialize(systemAction).GetValue<Integer>("type_id")
-                : null;
-            Db.Query("Transactions").Insert(
-                new
-                {
-                    Id = txId,
-                    SystemActionTypeId = systemActionTypeId,
-                    SignerAddress = signerAddress,
-                    BlockHash = blockHash,
-                },
-                scope);
 
             foreach (var address
                      in tx.UpdatedAddresses.Select(address => address.ByteArray.ToArray()))
@@ -364,6 +380,8 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                         },
                         scope);
             }
+
+            Db.Statement($"RELEASE \"{tx.Id.ToString()}\"", scope);
         }
 
         foreach (var nonce in txNonces)
@@ -454,27 +472,43 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 return;
             }
 
+            var signerAddress = tx.Signer.ByteArray.ToArray();
+            var txId = tx.Id.ByteArray.ToArray();
+            short? systemActionTypeId = tx.SystemAction is { } systemAction
+                ? (short)Registry.Serialize(systemAction).GetValue<Integer>("type_id")
+                : null;
+
+            await Db.StatementAsync($"SAVEPOINT \"{tx.Id.ToString()}\"", scope);
+            await Db.InsertOrIgnoreAsync("Accounts", new { Address = signerAddress }, scope);
+            try
+            {
+                await Db.Query("Transactions")
+                    .InsertAsync(
+                        new
+                        {
+                            Id = txId,
+                            SystemActionTypeId = systemActionTypeId,
+                            SignerAddress = signerAddress,
+                            BlockHash = blockHash,
+                        },
+                        scope);
+            }
+            catch (SqliteException e)
+            {
+                await Db.StatementAsync($"ROLLBACK TO \"{tx.Id.ToString()}\"", scope);
+                if (e.SqliteExtendedErrorCode != 1555 && e.SqliteExtendedErrorCode != 2067)
+                {
+                    await Rollback();
+                    throw;
+                }
+
+                continue;
+            }
+
             if (!txNonces.TryGetValue(tx.Signer, out var nonce) || tx.Nonce > nonce)
             {
                 txNonces = txNonces.SetItem(tx.Signer, tx.Nonce);
             }
-
-            var signerAddress = tx.Signer.ByteArray.ToArray();
-            var txId = tx.Id.ByteArray.ToArray();
-            await Db.InsertOrIgnoreAsync("Accounts", new { Address = signerAddress }, scope);
-
-            short? systemActionTypeId = tx.SystemAction is { } systemAction
-                ? (short)Registry.Serialize(systemAction).GetValue<Integer>("type_id")
-                : null;
-            await Db.Query("Transactions").InsertAsync(
-                new
-                {
-                    Id = txId,
-                    SystemActionTypeId = systemActionTypeId,
-                    SignerAddress = signerAddress,
-                    BlockHash = blockHash,
-                },
-                scope);
 
             foreach (var address
                      in tx.UpdatedAddresses.Select(address => address.ByteArray.ToArray()))
@@ -531,6 +565,8 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                         },
                         scope);
             }
+
+            await Db.StatementAsync($"RELEASE \"{tx.Id.ToString()}\"", scope);
         }
 
         foreach (var nonce in txNonces)
