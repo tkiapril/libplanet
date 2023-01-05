@@ -196,6 +196,8 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         Logger.Information("Index is out of date. Synchronizing...");
 
         long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
+        var populateStart = DateTimeOffset.Now;
+        var intervalStart = populateStart;
 
         using var indexEnumerator =
             store.IterateIndexes(chainId, (int)indexTipIndex + 1).GetEnumerator();
@@ -215,13 +217,30 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
             if (++processedBlockCount % 1000 == 0)
             {
-                Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
+                var now = DateTimeOffset.Now;
+                var totalElapsedSec = (now - populateStart).TotalSeconds;
+                var movingRate = 1000 / (now - intervalStart).TotalSeconds;
+                var totalRate = processedBlockCount / totalElapsedSec;
+                var elapsedStr = FormatSeconds((int)totalElapsedSec);
+                var eta = FormatSeconds(
+                    (int)TimeSpan.FromSeconds(
+                            (chainTipIndex - indexTipIndex - processedBlockCount) / movingRate)
+                        .TotalSeconds);
+
+                Logger.Information(
+                    $"[{processedBlockCount}/{totalBlocksToSync}] processed" +
+                    $" ({(float)(indexTipIndex + processedBlockCount) / chainTipIndex * 100:F1}%" +
+                    $" synced), moving: {(int)movingRate}blk/s, total: {(int)totalRate}blk/s," +
+                    $" elapsed: {elapsedStr}, eta: {eta}");
+                intervalStart = now;
             }
         }
 
         FinalizeAddBlockContext(addBlockContext, true);
 
-        Logger.Information($"{processedBlockCount} out of {totalBlocksToSync} blocks processed.");
+        Logger.Information(
+            $"{processedBlockCount} out of {totalBlocksToSync} blocks processed," +
+            $" elapsed: {FormatSeconds((int)(DateTimeOffset.Now - populateStart).TotalSeconds)}");
 
         if (totalBlocksToSync == processedBlockCount)
         {
@@ -291,6 +310,8 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         Logger.Information("Index is out of date. Synchronizing...");
 
         long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
+        var populateStart = DateTimeOffset.Now;
+        var intervalStart = populateStart;
 
         using var indexEnumerator =
             store.IterateIndexes(chainId, (int)indexTipIndex + 1).GetEnumerator();
@@ -310,13 +331,30 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
             if (++processedBlockCount % 1000 == 0)
             {
-                Logger.Information($"[{processedBlockCount}/{totalBlocksToSync}] processed.");
+                var now = DateTimeOffset.Now;
+                var totalElapsedSec = (now - populateStart).TotalSeconds;
+                var movingRate = 1000 / (now - intervalStart).TotalSeconds;
+                var totalRate = processedBlockCount / totalElapsedSec;
+                var elapsedStr = FormatSeconds((int)totalElapsedSec);
+                var eta = FormatSeconds(
+                    (int)TimeSpan.FromSeconds(
+                            (chainTipIndex - indexTipIndex - processedBlockCount) / movingRate)
+                        .TotalSeconds);
+
+                Logger.Information(
+                    $"[{processedBlockCount}/{totalBlocksToSync}] processed" +
+                    $" ({(float)(indexTipIndex + processedBlockCount) / chainTipIndex * 100:F1}%" +
+                    $" synced), moving: {(int)movingRate}blk/s, total: {(int)totalRate}blk/s," +
+                    $" elapsed: {elapsedStr}, eta: {eta}");
+                intervalStart = now;
             }
         }
 
         FinalizeAddBlockContext(addBlockContext, true);
 
-        Logger.Information($"{processedBlockCount} out of {totalBlocksToSync} blocks processed.");
+        Logger.Information(
+            $"{processedBlockCount} out of {totalBlocksToSync} blocks processed," +
+            $" elapsed: {FormatSeconds((int)(DateTimeOffset.Now - populateStart).TotalSeconds)}");
 
         if (totalBlocksToSync == processedBlockCount)
         {
@@ -361,6 +399,19 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         {
             throw new IndexNotReadyException();
         }
+    }
+
+    private static string FormatSeconds(int seconds)
+    {
+        var minutes = seconds / 60;
+        seconds %= 60;
+        var hours = minutes / 60;
+        minutes %= 60;
+        return hours > 0
+            ? $"{hours}h{minutes}m{seconds}s"
+            : minutes > 0
+                ? $"{minutes}m{seconds}s"
+                : $"{seconds}s";
     }
 
     private void MarkReady()
