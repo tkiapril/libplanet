@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Libplanet.Action;
@@ -110,14 +112,14 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     public abstract bool TryGetContainedBlock(TxId txId, out IndexedBlockItem containedBlock);
 
     /// <inheritdoc />
-    void IBlockChainIndex.AddBlock<T>(
-        Block<T> block, CancellationToken? stoppingToken) =>
-        AddBlockImpl(block, null, stoppingToken);
+    void IBlockChainIndex.AddBlock(
+        BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken? stoppingToken) =>
+        AddBlockImpl(blockDigest, txs, null, stoppingToken);
 
     /// <inheritdoc />
-    async Task IBlockChainIndex.AddBlockAsync<T>(
-        Block<T> block, CancellationToken? stoppingToken) =>
-        await AddBlockAsyncImpl(block, null, stoppingToken);
+    async Task IBlockChainIndex.AddBlockAsync(
+        BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken? stoppingToken) =>
+        await AddBlockAsyncImpl(blockDigest, txs, null, stoppingToken);
 
     void IBlockChainIndex.Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken)
     {
@@ -210,8 +212,11 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                 break;
             }
 
+            var blockDigest = store.GetBlockDigest(indexEnumerator.Current)!.Value;
             AddBlockImpl(
-                store.GetBlock<T>(indexEnumerator.Current),
+                blockDigest,
+                blockDigest.TxIds.Select(
+                    txId => (ITransaction)store.GetTransaction<T>(new TxId(txId.ToArray()))),
                 addBlockContext,
                 stoppingToken);
 
@@ -324,8 +329,11 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                 break;
             }
 
+            var blockDigest = store.GetBlockDigest(indexEnumerator.Current)!.Value;
             await AddBlockAsyncImpl(
-                store.GetBlock<T>(indexEnumerator.Current),
+                blockDigest,
+                blockDigest.TxIds.Select(
+                    txId => (ITransaction)store.GetTransaction<T>(new TxId(txId.ToArray()))),
                 addBlockContext,
                 stoppingToken);
 
@@ -370,13 +378,17 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
     protected abstract Task<IndexedBlockItem> GetIndexedBlockAsyncImpl(long index);
 
-    protected abstract void AddBlockImpl<T>(
-        Block<T> block, IAddBlockContext? context, CancellationToken? token)
-        where T : IAction, new();
+    protected abstract void AddBlockImpl(
+        BlockDigest blockDigest,
+        IEnumerable<ITransaction> txs,
+        IAddBlockContext? context,
+        CancellationToken? token);
 
-    protected abstract Task AddBlockAsyncImpl<T>(
-        Block<T> block, IAddBlockContext? context, CancellationToken? token)
-        where T : IAction, new();
+    protected abstract Task AddBlockAsyncImpl(
+        BlockDigest blockDigest,
+        IEnumerable<ITransaction> txs,
+        IAddBlockContext? context,
+        CancellationToken? token);
 
     /// <summary>
     /// Get a context that can be consumed by <see cref="AddBlock{T}"/> and
@@ -434,14 +446,25 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         (_, e) =>
         {
             var addBlockContext = GetAddBlockContext();
-            for (var i = e.OldTip.Index + 1; i <= e.NewTip.Index; i++)
+            var hashes = chain.Store.IterateIndexes(
+                chain.Store.GetCanonicalChainId()!.Value,
+                (int)(e.OldTip.Index + 1),
+                (int)(e.NewTip.Index - e.OldTip.Index));
+            foreach (var hash in hashes)
             {
                 if (stoppingToken?.IsCancellationRequested ?? false)
                 {
                     break;
                 }
 
-                AddBlockImpl(chain[i], addBlockContext, stoppingToken);
+                var blockDigest = chain.Store.GetBlockDigest(hash)!.Value;
+                AddBlockImpl(
+                    blockDigest,
+                    blockDigest.TxIds.Select(
+                        txId =>
+                            (ITransaction)chain.Store.GetTransaction<T>(new TxId(txId.ToArray()))),
+                    addBlockContext,
+                    stoppingToken);
             }
 
             FinalizeAddBlockContext(addBlockContext, true);

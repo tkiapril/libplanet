@@ -65,12 +65,20 @@ public abstract class BlockChainIndexTest
         var forkedChain = ChainFx.Chain.Fork(ChainFx.Chain.Tip.PreviousHash!.Value);
         await forkedChain.MineBlock(ChainFx.PrivateKeys[0]);
         // ReSharper disable once MethodHasAsyncOverload
-        populatedIndex.AddBlock(ChainFx.Chain.Tip);
-        await populatedIndex.AddBlockAsync(ChainFx.Chain.Tip);
+        populatedIndex.AddBlock(
+            ChainFx.Chain.Store.GetBlockDigest(ChainFx.Chain.Tip.Hash)!.Value,
+            ChainFx.Chain.Tip.Transactions);
+        await populatedIndex.AddBlockAsync(
+            ChainFx.Chain.Store.GetBlockDigest(ChainFx.Chain.Tip.Hash)!.Value,
+            ChainFx.Chain.Tip.Transactions);
         Assert.Throws<IndexMismatchException>(
-            () => populatedIndex.AddBlock(forkedChain.Tip));
+            () => populatedIndex.AddBlock(
+                forkedChain.Store.GetBlockDigest(forkedChain.Tip.Hash)!.Value,
+                forkedChain.Tip.Transactions));
         await Assert.ThrowsAsync<IndexMismatchException>(
-            async () => await populatedIndex.AddBlockAsync(forkedChain.Tip));
+            async () => await populatedIndex.AddBlockAsync(
+                forkedChain.Store.GetBlockDigest(forkedChain.Tip.Hash)!.Value,
+                forkedChain.Tip.Transactions));
     }
 
     [Fact]

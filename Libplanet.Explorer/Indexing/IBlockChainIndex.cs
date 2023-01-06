@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
@@ -167,21 +168,24 @@ public interface IBlockChainIndex
     long? AccountLastNonce(Address address);
 
     /// <summary>
-    /// Record the contents of a <paramref name="block"/> to the index.
+    /// Record the metadata of a <see cref="Block{T}"/> corresponding to the given
+    /// <paramref name="blockDigest"/> to the index.
     /// </summary>
-    /// <param name="block">The block to record to the index.</param>
+    /// <param name="blockDigest">The block digest object to record to the index.</param>
+    /// <param name="txs">An <see cref="IEnumerable{T}"/> containing the <see cref="ITransaction"/>
+    /// instances corresponding to <see cref="BlockDigest.TxIds"/> of given
+    /// <paramref name="blockDigest"/>.</param>
     /// <param name="token">A token to mark the cancellation of processing.</param>
-    /// <typeparam name="T">An user-provided <see cref="IAction"/> type.</typeparam>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
     /// <exception cref="IndexMismatchException">Thrown if the index already has seen a block in
     /// the height of the given block, but the hash of the indexed block and the given block is
     /// different.</exception>
-    internal void AddBlock<T>(Block<T> block, CancellationToken? token = null)
-        where T : IAction, new();
+    internal void AddBlock(
+        BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken? token = null);
 
-    /// <inheritdoc cref="AddBlock{T}"/>
-    internal Task AddBlockAsync<T>(Block<T> block, CancellationToken? token = null)
-        where T : IAction, new();
+    /// <inheritdoc cref="AddBlock"/>
+    internal Task AddBlockAsync(
+        BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken? token = null);
 
     internal void Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)
         where T : IAction, new();

@@ -1,14 +1,14 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Data;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Bencodex.Types;
-using Libplanet.Action;
-using Libplanet.Action.Sys;
 using Libplanet.Blocks;
 using Libplanet.Explorer.Indexing.EntityFramework;
+using Libplanet.Store;
 using Libplanet.Tx;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -222,18 +222,21 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         ?? throw new IndexOutOfRangeException($"The block #{index} does not exist in the index.");
 
     /// <inheritdoc />
-    protected override void AddBlockImpl<T>(
-        Block<T> block, IAddBlockContext? context, CancellationToken? stoppingToken)
+    protected override void AddBlockImpl(
+        BlockDigest blockDigest,
+        IEnumerable<ITransaction> txs,
+        IAddBlockContext? context,
+        CancellationToken? stoppingToken)
     {
-        var minerAddress = block.Miner.ByteArray.ToArray();
-        var blockHash = block.Hash.ByteArray.ToArray();
+        var minerAddress = blockDigest.Miner.ByteArray.ToArray();
+        var blockHash = blockDigest.Hash.ByteArray.ToArray();
 
         var scope
             = ((SqliteAddBlockContext?)context)?.Transaction ?? Db.Connection.BeginTransaction();
-        Db.Statement($"SAVEPOINT \"{block.Hash.ToString()}\"", scope);
+        Db.Statement($"SAVEPOINT \"{blockDigest.Hash.ToString()}\"", scope);
         void Rollback()
         {
-            Db.Statement($"ROLLBACK TO \"{block.Hash.ToString()}\"", scope);
+            Db.Statement($"ROLLBACK TO \"{blockDigest.Hash.ToString()}\"", scope);
             if (context is null)
             {
                 scope.Rollback();
@@ -249,7 +252,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     new
                     {
                         Hash = blockHash,
-                        Index = block.Index,
+                        Index = blockDigest.Index,
                         MinerAddress = minerAddress,
                     },
                     scope);
@@ -264,7 +267,8 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
             var index = Db.Query("Blocks")
                 .Select("Index")
-                .Where(new { Hash = block.Hash.ByteArray.ToArray(), Index = block.Index })
+                .Where(
+                    new { Hash = blockDigest.Hash.ByteArray.ToArray(), Index = blockDigest.Index })
                 .FirstOrDefault<long?>();
 
             if (index is not null)
@@ -273,12 +277,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             }
 
             throw new IndexMismatchException(
-                block.Index, GetTipImpl()!.Value.Hash, block.Hash);
+                blockDigest.Index, GetTipImpl()!.Value.Hash, blockDigest.Hash);
         }
 
         var txNonces = ImmutableDictionary<Address, long>.Empty;
 
-        foreach (var tx in block.Transactions)
+        foreach (var tx in txs)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
             {
@@ -289,7 +293,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             var signerAddress = tx.Signer.ByteArray.ToArray();
             var txId = tx.Id.ByteArray.ToArray();
             short? systemActionTypeId = tx.SystemAction is { } systemAction
-                ? (short)Registry.Serialize(systemAction).GetValue<Integer>("type_id")
+                ? (short)systemAction.GetValue<Integer>("type_id")
                 : null;
 
             Db.Statement($"SAVEPOINT \"{tx.Id.ToString()}\"", scope);
@@ -358,8 +362,8 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     return;
                 }
 
-                if (ActionTypeAttribute.ValueOf(customAction.GetType()) is not
-                    { } typeId)
+                if (customAction is not Dictionary actionDict
+                    || !actionDict.TryGetValue((Text)"type_id", out var typeId))
                 {
                     continue;
                 }
@@ -368,7 +372,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     "CustomActions",
                     new
                     {
-                        TypeId = typeId,
+                        TypeId = (string)(Text)typeId,
                     },
                     scope);
                 Db.Query("CustomActionTransaction")
@@ -376,7 +380,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                         new
                         {
                             ContainedTransactionsId = txId,
-                            CustomActionsTypeId = typeId,
+                            CustomActionsTypeId = (string)(Text)typeId,
                         },
                         scope);
             }
@@ -399,7 +403,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     scope);
         }
 
-        Db.Statement($"RELEASE \"{block.Hash.ToString()}\"", scope);
+        Db.Statement($"RELEASE \"{blockDigest.Hash.ToString()}\"", scope);
         if (context is null)
         {
             scope.Commit();
@@ -408,18 +412,21 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
     }
 
     /// <inheritdoc />
-    protected override async Task AddBlockAsyncImpl<T>(
-        Block<T> block, IAddBlockContext? context, CancellationToken? stoppingToken)
+    protected override async Task AddBlockAsyncImpl(
+        BlockDigest blockDigest,
+        IEnumerable<ITransaction> txs,
+        IAddBlockContext? context,
+        CancellationToken? stoppingToken)
     {
-        var minerAddress = block.Miner.ByteArray.ToArray();
-        var blockHash = block.Hash.ByteArray.ToArray();
+        var minerAddress = blockDigest.Miner.ByteArray.ToArray();
+        var blockHash = blockDigest.Hash.ByteArray.ToArray();
 
         var scope
             = ((SqliteAddBlockContext?)context)?.Transaction ?? Db.Connection.BeginTransaction();
-        await Db.StatementAsync($"SAVEPOINT \"{block.Hash.ToString()}\"", scope);
+        await Db.StatementAsync($"SAVEPOINT \"{blockDigest.Hash.ToString()}\"", scope);
         async Task Rollback()
         {
-            await Db.StatementAsync($"ROLLBACK TO \"{block.Hash.ToString()}\"", scope);
+            await Db.StatementAsync($"ROLLBACK TO \"{blockDigest.Hash.ToString()}\"", scope);
             if (context is null)
             {
                 scope.Rollback();
@@ -435,7 +442,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     new
                     {
                         Hash = blockHash,
-                        Index = block.Index,
+                        Index = blockDigest.Index,
                         MinerAddress = minerAddress,
                     },
                     scope);
@@ -450,7 +457,8 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
             var index = await Db.Query("Blocks")
                 .Select("Index")
-                .Where(new { Hash = block.Hash.ByteArray.ToArray(), Index = block.Index })
+                .Where(
+                    new { Hash = blockDigest.Hash.ByteArray.ToArray(), Index = blockDigest.Index })
                 .FirstOrDefaultAsync<long?>();
 
             if (index is not null)
@@ -459,12 +467,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             }
 
             throw new IndexMismatchException(
-                block.Index, (await GetTipAsyncImpl())!.Value.Hash, block.Hash);
+                blockDigest.Index, (await GetTipAsyncImpl())!.Value.Hash, blockDigest.Hash);
         }
 
         var txNonces = ImmutableDictionary<Address, long>.Empty;
 
-        foreach (var tx in block.Transactions)
+        foreach (var tx in txs)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
             {
@@ -475,7 +483,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             var signerAddress = tx.Signer.ByteArray.ToArray();
             var txId = tx.Id.ByteArray.ToArray();
             short? systemActionTypeId = tx.SystemAction is { } systemAction
-                ? (short)Registry.Serialize(systemAction).GetValue<Integer>("type_id")
+                ? (short)systemAction.GetValue<Integer>("type_id")
                 : null;
 
             await Db.StatementAsync($"SAVEPOINT \"{tx.Id.ToString()}\"", scope);
@@ -544,7 +552,8 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     return;
                 }
 
-                if (ActionTypeAttribute.ValueOf(customAction.GetType()) is not { } typeId)
+                if (customAction is not Dictionary actionDict
+                    || !actionDict.TryGetValue((Text)"type_id", out var typeId))
                 {
                     continue;
                 }
@@ -553,7 +562,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     "CustomActions",
                     new
                     {
-                        TypeId = typeId,
+                        TypeId = (string)(Text)typeId,
                     },
                     scope);
                 await Db.Query("CustomActionTransaction")
@@ -561,7 +570,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                         new
                         {
                             ContainedTransactionsId = txId,
-                            CustomActionsTypeId = typeId,
+                            CustomActionsTypeId = (string)(Text)typeId,
                         },
                         scope);
             }
@@ -584,7 +593,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     scope);
         }
 
-        await Db.StatementAsync($"RELEASE \"{block.Hash.ToString()}\"", scope);
+        await Db.StatementAsync($"RELEASE \"{blockDigest.Hash.ToString()}\"", scope);
         if (context is null)
         {
             scope.Commit();
