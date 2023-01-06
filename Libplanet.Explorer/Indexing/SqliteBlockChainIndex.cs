@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -217,7 +218,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             .Select(result => (result.Item1, new BlockHash(result.Item2)));
     }
 
-#pragma warning disable MEN003
     /// <inheritdoc />
     protected override void RecordBlockImpl(
         BlockDigest blockDigest,
@@ -316,6 +316,19 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     throw;
                 }
 
+                var (existingIndex, existingBlockHash) = Db.Query("Transactions")
+                    .Select("Blocks.Index", "Blocks.Hash")
+                    .Where("Transactions.Id", txId)
+                    .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
+                    .FirstOrDefault<(long, byte[])>(scope);
+                File.AppendAllText(
+                    "tx-collision-log.txt",
+                    $"{{\"txid\": \"{tx.Id.ToString()}\", "
+                    + $"\"incident_block_index\": {blockDigest.Index}, "
+                    + $"\"incident_blockhash\": \"{blockDigest.Hash.ToString()}\", "
+                    + $"\"existing_block_index\": {existingIndex}, "
+                    + $"\"existing_blockhash\": \"{new BlockHash(existingBlockHash).ToString()}\""
+                    + "},");
                 continue;
             }
 
