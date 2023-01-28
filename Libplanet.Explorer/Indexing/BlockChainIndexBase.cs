@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,7 +24,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     private bool _isReady = false;
 
     /// <inheritdoc />
-    public IndexedBlockItem Tip
+    public (long Index, BlockHash Hash) Tip
     {
         get
         {
@@ -48,40 +47,40 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     }
 
     /// <inheritdoc />
-    public async Task<IndexedBlockItem> GetTipAsync()
+    public async Task<(long Index, BlockHash Hash)> GetTipAsync()
     {
         EnsureReady();
         return await GetTipAsyncImpl() ?? throw new IndexOutOfRangeException("The index is empty.");
     }
 
     /// <inheritdoc />
-    public abstract IndexedBlockItem GetIndexedBlock(BlockHash hash);
+    public abstract long BlockHashToIndex(BlockHash hash);
 
     /// <inheritdoc />
-    public IndexedBlockItem GetIndexedBlock(long index)
+    public abstract Task<long> BlockHashToIndexAsync(BlockHash hash);
+
+    /// <inheritdoc />
+    public BlockHash IndexToBlockHash(long index)
     {
         EnsureReady();
-        return GetIndexedBlockImpl(index);
+        return IndexToBlockHashImpl(index);
     }
 
     /// <inheritdoc />
-    public abstract Task<IndexedBlockItem> GetIndexedBlockAsync(BlockHash hash);
-
-    /// <inheritdoc />
-    public async Task<IndexedBlockItem> GetIndexedBlockAsync(long index)
+    public async Task<BlockHash> IndexToBlockHashAsync(long index)
     {
         EnsureReady();
-        return await GetIndexedBlockAsyncImpl(index);
+        return await IndexToBlockHashAsyncImpl(index);
     }
 
     /// <inheritdoc />
-    public abstract IImmutableList<IndexedBlockItem>
-        GetIndexedBlocks(Range indexRange, bool desc, Address? miner);
+    public abstract IEnumerable<(long Index, BlockHash Hash)>
+        GetBlockHashesByRange(Range indexRange, bool desc, Address? miner);
 
     /// <inheritdoc />
-    public IImmutableList<IndexedBlockItem>
-        GetIndexedBlocks(int? offset, int? limit, bool desc, Address? miner) =>
-        GetIndexedBlocks(
+    public IEnumerable<(long Index, BlockHash Hash)>
+        GetBlockHashesByOffset(int? offset, int? limit, bool desc, Address? miner) =>
+        GetBlockHashesByRange(
             new Range(
                 new Index(offset ?? 0),
                 limit is { } limitValue
@@ -91,35 +90,35 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             miner);
 
     /// <inheritdoc />
-    public abstract IImmutableList<IndexedTransactionItem>
-        GetSignedTransactions(Address signer, int? offset, int? limit, bool desc);
+    public abstract IEnumerable<TxId>
+        GetSignedTxIdsByAddress(Address signer, int? offset, int? limit, bool desc);
 
     /// <inheritdoc />
-    public abstract IImmutableList<IndexedTransactionItem>
-        GetInvolvedTransactions(Address address, int? offset, int? limit, bool desc);
+    public abstract IEnumerable<TxId>
+        GetInvolvedTxIdsByAddress(Address address, int? offset, int? limit, bool desc);
 
     /// <inheritdoc />
-    public abstract long? AccountLastNonce(Address address);
+    public abstract long? GetLastNonceByAddress(Address address);
 
     /// <inheritdoc />
-    public IndexedBlockItem GetContainedBlock(TxId txId) =>
-        TryGetContainedBlock(txId, out var containedBlock)
+    public BlockHash GetContainedBlockHashByTxId(TxId txId) =>
+        TryGetContainedBlockHashById(txId, out var containedBlock)
             ? containedBlock
             : throw new IndexOutOfRangeException(
                 $"The txId {txId} does not exist in the index.");
 
     /// <inheritdoc />
-    public abstract bool TryGetContainedBlock(TxId txId, out IndexedBlockItem containedBlock);
+    public abstract bool TryGetContainedBlockHashById(TxId txId, out BlockHash containedBlock);
 
     /// <inheritdoc />
-    void IBlockChainIndex.AddBlock(
+    void IBlockChainIndex.RecordBlock(
         BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken? stoppingToken) =>
-        AddBlockImpl(blockDigest, txs, null, stoppingToken);
+        RecordBlockImpl(blockDigest, txs, null, stoppingToken);
 
     /// <inheritdoc />
-    async Task IBlockChainIndex.AddBlockAsync(
+    async Task IBlockChainIndex.RecordBlockAsync(
         BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken? stoppingToken) =>
-        await AddBlockAsyncImpl(blockDigest, txs, null, stoppingToken);
+        await RecordBlockAsyncImpl(blockDigest, txs, null, stoppingToken);
 
     void IBlockChainIndex.Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken)
     {
@@ -147,7 +146,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         if (indexTipIndex >= 0)
         {
-            var indexHash = GetIndexedBlockImpl(0).Hash;
+            var indexHash = IndexToBlockHashImpl(0);
             using var chainIndexEnumerator =
                 store.IterateIndexes(chainId, limit: 1).GetEnumerator();
             if (!chainIndexEnumerator.MoveNext())
@@ -203,7 +202,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         using var indexEnumerator =
             store.IterateIndexes(chainId, (int)indexTipIndex + 1).GetEnumerator();
-        var addBlockContext = GetAddBlockContext();
+        var addBlockContext = GetRecordBlockContext();
         while (indexEnumerator.MoveNext() && indexTipIndex + processedBlockCount < chainTipIndex)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
@@ -213,7 +212,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             }
 
             var blockDigest = store.GetBlockDigest(indexEnumerator.Current)!.Value;
-            AddBlockImpl(
+            RecordBlockImpl(
                 blockDigest,
                 blockDigest.TxIds.Select(
                     txId => (ITransaction)store.GetTransaction<T>(new TxId(txId.ToArray()))),
@@ -241,7 +240,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             }
         }
 
-        FinalizeAddBlockContext(addBlockContext, true);
+        FinalizeRecordBlockContext(addBlockContext, true);
 
         Logger.Information(
             $"{processedBlockCount} out of {totalBlocksToSync} blocks processed," +
@@ -264,7 +263,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         if (indexTipIndex >= 0)
         {
-            var indexHash = (await GetIndexedBlockAsyncImpl(0)).Hash;
+            var indexHash = await IndexToBlockHashAsyncImpl(0);
             using var chainIndexEnumerator =
                 store.IterateIndexes(chainId, limit: 1).GetEnumerator();
             if (!chainIndexEnumerator.MoveNext())
@@ -320,7 +319,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         using var indexEnumerator =
             store.IterateIndexes(chainId, (int)indexTipIndex + 1).GetEnumerator();
-        var addBlockContext = GetAddBlockContext();
+        var addBlockContext = GetRecordBlockContext();
         while (indexEnumerator.MoveNext() && indexTipIndex + processedBlockCount < chainTipIndex)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
@@ -330,7 +329,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             }
 
             var blockDigest = store.GetBlockDigest(indexEnumerator.Current)!.Value;
-            await AddBlockAsyncImpl(
+            await RecordBlockAsyncImpl(
                 blockDigest,
                 blockDigest.TxIds.Select(
                     txId => (ITransaction)store.GetTransaction<T>(new TxId(txId.ToArray()))),
@@ -358,7 +357,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             }
         }
 
-        FinalizeAddBlockContext(addBlockContext, true);
+        FinalizeRecordBlockContext(addBlockContext, true);
 
         Logger.Information(
             $"{processedBlockCount} out of {totalBlocksToSync} blocks processed," +
@@ -370,40 +369,40 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         }
     }
 
-    protected abstract IndexedBlockItem? GetTipImpl();
+    protected abstract (long Index, BlockHash Hash)? GetTipImpl();
 
-    protected abstract Task<IndexedBlockItem?> GetTipAsyncImpl();
+    protected abstract Task<(long Index, BlockHash Hash)?> GetTipAsyncImpl();
 
-    protected abstract IndexedBlockItem GetIndexedBlockImpl(long index);
+    protected abstract BlockHash IndexToBlockHashImpl(long index);
 
-    protected abstract Task<IndexedBlockItem> GetIndexedBlockAsyncImpl(long index);
+    protected abstract Task<BlockHash> IndexToBlockHashAsyncImpl(long index);
 
-    protected abstract void AddBlockImpl(
+    protected abstract void RecordBlockImpl(
         BlockDigest blockDigest,
         IEnumerable<ITransaction> txs,
-        IAddBlockContext? context,
+        IRecordBlockContext? context,
         CancellationToken? token);
 
-    protected abstract Task AddBlockAsyncImpl(
+    protected abstract Task RecordBlockAsyncImpl(
         BlockDigest blockDigest,
         IEnumerable<ITransaction> txs,
-        IAddBlockContext? context,
+        IRecordBlockContext? context,
         CancellationToken? token);
 
     /// <summary>
-    /// Get a context that can be consumed by <see cref="AddBlock{T}"/> and
-    /// <see cref="AddBlockAsync{T}"/> (e.g. <see cref="System.Data.IDbTransaction"/> for batch
-    /// processing.
+    /// Get a context that can be consumed by <see cref="RecordBlock"/> and
+    /// <see cref="RecordBlockAsync"/> (e.g. <see cref="System.Data.IDbTransaction"/>
+    /// for batch processing.
     /// </summary>
-    /// <returns>A context that can be consumed by <see cref="AddBlock{T}"/>.</returns>
-    protected abstract IAddBlockContext GetAddBlockContext();
+    /// <returns>A context that can be consumed by <see cref="RecordBlock"/>.</returns>
+    protected abstract IRecordBlockContext GetRecordBlockContext();
 
     /// <summary>
-    /// Finalizes the data for a context gained from <see cref="GetAddBlockContext"/>.
+    /// Finalizes the data for a context gained from <see cref="GetRecordBlockContext"/>.
     /// </summary>
-    /// <param name="context">A context gained from <see cref="GetAddBlockContext"/>.</param>
+    /// <param name="context">A context gained from <see cref="GetRecordBlockContext"/>.</param>
     /// <param name="commit">If true, commit the data, and if false, discard the data.</param>
-    protected abstract void FinalizeAddBlockContext(IAddBlockContext context, bool commit);
+    protected abstract void FinalizeRecordBlockContext(IRecordBlockContext context, bool commit);
 
     protected void EnsureReady()
     {
@@ -445,7 +444,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         where T : IAction, new() =>
         (_, e) =>
         {
-            var addBlockContext = GetAddBlockContext();
+            var addBlockContext = GetRecordBlockContext();
             var hashes = chain.Store.IterateIndexes(
                 chain.Store.GetCanonicalChainId()!.Value,
                 (int)(e.OldTip.Index + 1),
@@ -458,7 +457,7 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                 }
 
                 var blockDigest = chain.Store.GetBlockDigest(hash)!.Value;
-                AddBlockImpl(
+                RecordBlockImpl(
                     blockDigest,
                     blockDigest.TxIds.Select(
                         txId =>
@@ -467,6 +466,6 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
                     stoppingToken);
             }
 
-            FinalizeAddBlockContext(addBlockContext, true);
+            FinalizeRecordBlockContext(addBlockContext, true);
         };
 }

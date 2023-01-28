@@ -55,7 +55,7 @@ namespace Libplanet.Explorer.Queries
                 offset = Index.Tip.Index + offset + 1;
             }
 
-            foreach (var index in Index.GetIndexedBlocks((int)offset, (int?)limit, desc))
+            foreach (var index in Index.GetBlockHashesByOffset((int)offset, (int?)limit, desc))
             {
                 var block = Store.GetBlock<T>(index.Hash);
                 bool isMinerValid = miner is null || miner == block.Miner;
@@ -87,8 +87,8 @@ namespace Libplanet.Explorer.Queries
             if (signer is { } signerValue)
             {
                 foreach (var tx in Index
-                             .GetSignedTransactions(signerValue, (int)offset, limit, desc)
-                             .Select(item => Chain.GetTransaction(item.Id)))
+                             .GetSignedTxIdsByAddress(signerValue, (int)offset, limit, desc)
+                             .Select(item => Chain.GetTransaction(item)))
                 {
                     yield return tx;
                 }
@@ -96,8 +96,8 @@ namespace Libplanet.Explorer.Queries
             else if (involved is { } involvedValue)
             {
                 foreach (var tx in Index
-                             .GetInvolvedTransactions(involvedValue, (int)offset, limit, desc)
-                             .Select(item => Chain.GetTransaction(item.Id)))
+                             .GetInvolvedTxIdsByAddress(involvedValue, (int)offset, limit, desc)
+                             .Select(item => Chain.GetTransaction(item)))
                 {
                     yield return tx;
                 }
@@ -147,7 +147,7 @@ namespace Libplanet.Explorer.Queries
 
         internal static Block<T> GetBlockByHash(BlockHash hash) => Store.GetBlock<T>(hash);
 
-        internal static Block<T> GetBlockByIndex(long index) => Chain[Index[index].Hash];
+        internal static Block<T> GetBlockByIndex(long index) => Chain[Index[index]];
 
         internal static Transaction<T> GetTransaction(TxId id) => Chain.GetTransaction(id);
 

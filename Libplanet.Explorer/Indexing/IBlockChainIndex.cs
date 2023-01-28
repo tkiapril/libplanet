@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Libplanet.Action;
@@ -17,155 +17,158 @@ namespace Libplanet.Explorer.Indexing;
 public interface IBlockChainIndex
 {
     /// <summary>
-    /// Tip of the indexed <see cref="Block{T}"/>s.
+    /// The height and the <see cref="BlockHash"/> of the most recently indexed
+    /// <see cref="Block{T}"/>.
     /// </summary>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
     /// <exception cref="IndexOutOfRangeException">Thrown if the index is empty.</exception>
-    IndexedBlockItem Tip { get; }
+    (long Index, BlockHash Hash) Tip { get; }
 
-    /// <inheritdoc cref="GetIndexedBlock(long)"/>
-    IndexedBlockItem this[long index] => GetIndexedBlock(index);
+    /// <inheritdoc cref="IndexToBlockHash"/>
+    BlockHash this[long index] => IndexToBlockHash(index);
 
-    /// <inheritdoc cref="GetIndexedBlock(Libplanet.Blocks.BlockHash)"/>
-    IndexedBlockItem this[BlockHash hash] => GetIndexedBlock(hash);
-
-    /// <inheritdoc cref="GetIndexedBlocks(System.Range,bool,Libplanet.Address?)"/>
-    IImmutableList<IndexedBlockItem> this[Range indexRange] => GetIndexedBlocks(indexRange);
+    /// <inheritdoc cref="GetBlockHashesByRange"/>
+    IEnumerable<BlockHash> this[Range indexRange] =>
+        GetBlockHashesByRange(indexRange).Select(tuple => tuple.Hash);
 
     /// <summary>
-    /// Get the tip of the indexed <see cref="Block{T}"/>s.
+    /// Get the height and the <see cref="BlockHash"/> of the most recently indexed
+    /// <see cref="Block{T}"/>.
     /// </summary>
-    /// <returns>The tip of the indexed <see cref="Block{T}"/>s.</returns>
+    /// <returns>A <see cref="ValueTuple{Long,BlockHash}"/> that contains the height and the
+    /// <see cref="BlockHash"/> of the most recently indexed <see cref="Block{T}"/>.</returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
     /// <exception cref="IndexOutOfRangeException">Thrown if the index is empty.</exception>
-    Task<IndexedBlockItem> GetTipAsync();
+    Task<(long Index, BlockHash Hash)> GetTipAsync();
 
     /// <summary>
-    /// Get the indexed block with the given <paramref name="hash"/>.
+    /// Get the indexed height of the <see cref="Block{T}"/> with the given <paramref name="hash"/>.
     /// </summary>
-    /// <param name="hash">The <see cref="BlockHash"/> of the desired <see cref="Block{T}"/>.
-    /// </param>
-    /// <returns>The indexed block with the <paramref name="hash"/>.</returns>
+    /// <param name="hash">The <see cref="BlockHash"/> of the desired indexed
+    /// <see cref="Block{T}"/>.</param>
+    /// <returns>The height of the block with the <paramref name="hash"/>.</returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
-    /// <exception cref="IndexOutOfRangeException">Thrown if the index does not contain the
-    /// <see cref="Block{T}"/> with the given <paramref name="hash"/>.</exception>
-    IndexedBlockItem GetIndexedBlock(BlockHash hash);
+    /// <exception cref="IndexOutOfRangeException">Thrown if the <see cref="Block{T}"/> with the
+    /// given <paramref name="hash"/> is not indexed yet.</exception>
+    long BlockHashToIndex(BlockHash hash);
+
+    /// <inheritdoc cref="BlockHashToIndex"/>
+    Task<long> BlockHashToIndexAsync(BlockHash hash);
 
     /// <summary>
-    /// Gets the indexed block at <paramref name="index"/> height.
+    /// Gets the indexed <see cref="BlockHash"/> of the <see cref="Block{T}"/> at
+    /// <paramref name="index"/> height.
     /// </summary>
     /// <param name="index">The height of the desired indexed <see cref="Block{T}"/>.</param>
-    /// <returns>The indexed <see cref="Block{T}"/> at <paramref name="index"/> height.</returns>
+    /// <returns>The indexed <see cref="BlockHash"/> of the <see cref="Block{T}"/> at
+    /// <paramref name="index"/> height.</returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
     /// <exception cref="IndexOutOfRangeException">Thrown if the index does not contain the
     /// <see cref="Block{T}"/> at the given <paramref name="index"/>.</exception>
-    IndexedBlockItem GetIndexedBlock(long index);
+    BlockHash IndexToBlockHash(long index);
 
-    /// <inheritdoc cref="GetIndexedBlock(Libplanet.Blocks.BlockHash)"/>
-    Task<IndexedBlockItem> GetIndexedBlockAsync(BlockHash hash);
-
-    /// <inheritdoc cref="GetIndexedBlock(long)"/>
-    Task<IndexedBlockItem> GetIndexedBlockAsync(long index);
+    /// <inheritdoc cref="IndexToBlockHash"/>
+    Task<BlockHash> IndexToBlockHashAsync(long index);
 
     /// <summary>
-    /// Get the indexed <see cref="Block{T}"/>s in the given <paramref name="indexRange"/>.
+    /// Get the height and the <see cref="BlockHash"/> of the indexed <see cref="Block{T}"/>s in the
+    /// given <paramref name="indexRange"/>.
     /// </summary>
-    /// <param name="indexRange">The range of index to get the blocks from.</param>
-    /// <param name="desc">Whether to return the <see cref="Block{T}"/>s in the descending order.
-    /// </param>
-    /// <param name="miner">The miner of the block, if desired.</param>
-    /// <returns>The indexed <see cref="Block{T}"/>s in the given <paramref name="indexRange"/>.
-    /// </returns>
+    /// <param name="indexRange">The range of <see cref="Block{T}"/> height to look up.</param>
+    /// <param name="desc">Whether to look up the index in the descending order.</param>
+    /// <param name="miner">The miner of the block, if filtering by the miner is desired.</param>
+    /// <returns>The height and the <see cref="BlockHash"/> of the indexed <see cref="Block{T}"/>s
+    /// in the given <paramref name="indexRange"/>.</returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
-    IImmutableList<IndexedBlockItem> GetIndexedBlocks(
+    IEnumerable<(long Index, BlockHash Hash)> GetBlockHashesByRange(
         Range indexRange, bool desc = false, Address? miner = null);
 
     /// <summary>
-    /// Get at most <paramref name="limit"/> number of indexed <see cref="Block{T}"/>s from the
-    /// <paramref name="offset"/>.
+    /// Get the height and the <see cref="BlockHash"/> of the indexed <see cref="Block{T}"/>s from
+    /// the <paramref name="offset"/>, at most <paramref name="limit"/> number.
     /// </summary>
     /// <param name="offset">The starting index.</param>
-    /// <param name="limit">The upper limit of <see cref="Block{T}"/>s to return.</param>
-    /// <param name="desc">Whether to return the <see cref="Block{T}"/>s in the descending order.
-    /// </param>
-    /// <param name="miner">The miner of the block, if desired.</param>
-    /// <returns>The indexed <see cref="Block{T}"/>s starting at <paramref name="offset"/> index
-    /// and at most <paramref name="limit"/> number.</returns>
-    /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
-    IImmutableList<IndexedBlockItem> GetIndexedBlocks(
-        int? offset = null, int? limit = null, bool desc = false, Address? miner = null);
-
-    /// <summary>
-    /// Get at most <paramref name="limit"/> number of indexed <see cref="Transaction{T}"/>s from
-    /// the <paramref name="offset"/> that was signed by the <paramref name="signer"/>.
-    /// </summary>
-    /// <param name="signer">The signer of the <see cref="Transaction{T}"/>.</param>
-    /// <param name="offset">the starting index.</param>
-    /// <param name="limit">The upper limit of <see cref="Transaction{T}"/>s to return.</param>
-    /// <param name="desc">Whether to return the <see cref="Transaction{T}"/>s in the descending
-    /// order.</param>
-    /// <returns>The indexed <see cref="Transaction{T}"/>s signed by <paramref name="signer"/>
+    /// <param name="limit">The upper limit of <see cref="Block{T}"/>s to look up.</param>
+    /// <param name="desc">Whether to look up the index in the descending order.</param>
+    /// <param name="miner">The miner of the block, if filtering by the miner is desired.</param>
+    /// <returns>The height and the <see cref="BlockHash"/> of the indexed <see cref="Block{T}"/>s
     /// starting at <paramref name="offset"/> index and at most <paramref name="limit"/> number.
     /// </returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
-    IImmutableList<IndexedTransactionItem>
-        GetSignedTransactions(
+    IEnumerable<(long Index, BlockHash Hash)> GetBlockHashesByOffset(
+        int? offset = null, int? limit = null, bool desc = false, Address? miner = null);
+
+    /// <summary>
+    /// Get the <see cref="TxId"/> of the indexed <see cref="Transaction{T}"/>s from the
+    /// <paramref name="offset"/> that was signed by the <paramref name="signer"/>, at most
+    /// <paramref name="limit"/> number.
+    /// </summary>
+    /// <param name="signer">The signer of the <see cref="Transaction{T}"/>.</param>
+    /// <param name="offset">the starting index.</param>
+    /// <param name="limit">The upper limit of <see cref="TxId"/>s to return.</param>
+    /// <param name="desc">Whether to look up the <see cref="TxId"/>s in the descending order.
+    /// </param>
+    /// <returns>The <see cref="TxId"/> of the indexed <see cref="Transaction{T}"/>s signed by
+    /// the <paramref name="signer"/> starting at <paramref name="offset"/> index and at most
+    /// <paramref name="limit"/> number.</returns>
+    /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
+    IEnumerable<TxId> GetSignedTxIdsByAddress(
             Address signer, int? offset = null, int? limit = null, bool desc = false);
 
     /// <summary>
-    /// Get at most <paramref name="limit"/> number of indexed <see cref="Transaction{T}"/>s from
-    /// the <paramref name="offset"/> that involves the <paramref name="address"/>.
+    /// Get the <see cref="TxId"/> of the indexed <see cref="Transaction{T}"/>s from the
+    /// <paramref name="offset"/> that involves the <paramref name="address"/>, at most
+    /// <paramref name="limit"/> number.
     /// </summary>
     /// <param name="address">The address that is recorded as involved in the
     /// <see cref="Transaction{T}"/>.</param>
     /// <param name="offset">The starting index.</param>
-    /// <param name="limit">The upper limit of <see cref="Transaction{T}"/>s to return.</param>
-    /// <param name="desc">Whether to return the <see cref="Transaction{T}"/>s in the descending
-    /// order.</param>
-    /// <returns>The indexed <see cref="Transaction{T}"/>s involving the <paramref name="address"/>
-    /// starting at <paramref name="offset"/> index and at most <paramref name="limit"/> number.
+    /// <param name="limit">The upper limit of <see cref="TxId"/>s to return.</param>
+    /// <param name="desc">Whether to look up the <see cref="TxId"/>s in the descending order.
+    /// </param>
+    /// <returns>The <see cref="TxId"/> of the indexed <see cref="Transaction{T}"/>s involving the
+    /// <paramref name="address"/> starting at <paramref name="offset"/> index and at most
+    /// <paramref name="limit"/> number.
     /// </returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
-    IImmutableList<IndexedTransactionItem>
-        GetInvolvedTransactions(
-            Address address, int? offset = null, int? limit = null, bool desc = false);
+    IEnumerable<TxId> GetInvolvedTxIdsByAddress(
+        Address address, int? offset = null, int? limit = null, bool desc = false);
 
     /// <summary>
-    /// Get the indexed block that contains the <see cref="Transaction{T}"/> with the
-    /// <paramref name="txId"/>.
+    /// Get the <see cref="BlockHash"/> of the indexed <see cref="Block{T}"/> that contains the
+    /// <see cref="Transaction{T}"/> with the <paramref name="txId"/>.
     /// </summary>
-    /// <param name="txId">The id of the <see cref="Transaction{T}"/> to find the containing
-    /// <see cref="Block{T}"/>.</param>
-    /// <returns>The indexed block that contains the <see cref="Transaction{T}"/> with the
-    /// <paramref name="txId"/>.</returns>
+    /// <param name="txId">The <see cref="TxId"/> of the <see cref="Transaction{T}"/> to look up the
+    /// containing <see cref="Block{T}"/>.</param>
+    /// <returns>The <see cref="BlockHash"/> of the indexed <see cref="Block{T}"/> that contains the
+    /// <see cref="Transaction{T}"/> with the <paramref name="txId"/>.</returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
     /// <exception cref="IndexOutOfRangeException">Thrown if the <paramref name="txId"/> does not
     /// exist in the index.</exception>
-    IndexedBlockItem GetContainedBlock(TxId txId);
+    BlockHash GetContainedBlockHashByTxId(TxId txId);
 
     /// <summary>
-    /// Attempt to get the indexed block that contains the <see cref="Transaction{T}"/> with the
-    /// <paramref name="txId"/>, and return whether if it was successful.
+    /// Attempt to get the <see cref="BlockHash"/> of the indexed block that contains the
+    /// <see cref="Transaction{T}"/> with the <paramref name="txId"/>, and return whether if the
+    /// lookup was successful.
     /// </summary>
-    /// <param name="txId">The id of the <see cref="Transaction{T}"/> to find the containing
-    /// <see cref="Block{T}"/>.</param>
-    /// <param name="containedBlock">The indexed block that contains the
-    /// <see cref="Transaction{T}"/> with the <paramref name="txId"/>, if it exists.</param>
-    /// <returns>Whether the retrieval succeeded.</returns>
+    /// <param name="txId">The <see cref="TxId"/> of the <see cref="Transaction{T}"/> to find the
+    /// containing <see cref="Block{T}"/>.</param>
+    /// <param name="containedBlock">The <see cref="BlockHash"/> of the indexed block that contains
+    /// the <see cref="Transaction{T}"/> with the <paramref name="txId"/>, if it exists.</param>
+    /// <returns>Whether the retrieval was successful.</returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
-    bool TryGetContainedBlock(TxId txId, out IndexedBlockItem containedBlock);
+    bool TryGetContainedBlockHashById(TxId txId, out BlockHash containedBlock);
 
     /// <summary>
-    /// Get the last tx nonce of the <paramref name="address"/> that was recorded in the
-    /// <see cref="BlockChain{T}"/>.
+    /// Get the last tx nonce of the <paramref name="address"/> that was indexed.
     /// </summary>
     /// <param name="address">The address to retrieve the tx nonce.</param>
-    /// <returns>The last tx nonce of the <paramref name="address"/> that was recorded in the
-    /// <see cref="BlockChain{T}"/>.</returns>
+    /// <returns>The last tx nonce of the <paramref name="address"/> that was indexed.</returns>
     /// <remarks>This method does not return the tx nonces of <see cref="Transaction{T}"/>s that
     /// are currently staged.</remarks>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
-    long? AccountLastNonce(Address address);
+    long? GetLastNonceByAddress(Address address);
 
     /// <summary>
     /// Record the metadata of a <see cref="Block{T}"/> corresponding to the given
@@ -180,11 +183,11 @@ public interface IBlockChainIndex
     /// <exception cref="IndexMismatchException">Thrown if the index already has seen a block in
     /// the height of the given block, but the hash of the indexed block and the given block is
     /// different.</exception>
-    internal void AddBlock(
+    internal void RecordBlock(
         BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken? token = null);
 
-    /// <inheritdoc cref="AddBlock"/>
-    internal Task AddBlockAsync(
+    /// <inheritdoc cref="RecordBlock"/>
+    internal Task RecordBlockAsync(
         BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken? token = null);
 
     internal void Bind<T>(BlockChain<T> chain, CancellationToken? stoppingToken = null)

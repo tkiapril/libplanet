@@ -46,91 +46,83 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
     private QueryFactory Db { get; }
 
     /// <inheritdoc />
-    public override IndexedBlockItem GetIndexedBlock(BlockHash hash)
+    public override long BlockHashToIndex(BlockHash hash)
     {
         EnsureReady();
-        return IndexedBlockItem.FromTuple(
-                   Db.Query("Blocks")
-                       .Select("Index", "Hash", "MinerAddress")
-                       .Where("Hash", hash.ByteArray.ToArray())
-                       .FirstOrDefault<(long, byte[], byte[])>())
+        return Db.Query("Blocks")
+                   .Select("Index")
+                   .Where("Hash", hash.ByteArray.ToArray())
+                   .FirstOrDefault<long?>()
                ?? throw new IndexOutOfRangeException(
                    $"The hash {hash} does not exist in the index.");
     }
 
     /// <inheritdoc />
-    public override async Task<IndexedBlockItem> GetIndexedBlockAsync(BlockHash hash)
+    public override async Task<long> BlockHashToIndexAsync(BlockHash hash)
     {
         EnsureReady();
-        return IndexedBlockItem.FromTuple(
-            await Db.Query("Blocks")
-                .Select("Index", "Hash", "MinerAddress")
-                .Where("Hash", hash.ByteArray.ToArray())
-                .FirstOrDefaultAsync<(long, byte[], byte[])>())
+        return await Db.Query("Blocks")
+                   .Select("Index", "Hash", "MinerAddress")
+                   .Where("Hash", hash.ByteArray.ToArray())
+                   .FirstOrDefaultAsync<long?>()
                ?? throw new IndexOutOfRangeException(
                    $"The hash {hash} does not exist in the index.");
     }
 
     /// <inheritdoc />
-    public override IImmutableList<IndexedBlockItem>
-        GetIndexedBlocks(Range indexRange, bool desc, Address? miner)
+    public override IEnumerable<(long Index, BlockHash Hash)>
+        GetBlockHashesByRange(Range indexRange, bool desc, Address? miner)
     {
         EnsureReady();
         var (offset, limit) = indexRange.GetOffsetAndLength((int)((Tip.Index + 1) & int.MaxValue));
         if (limit == 0)
         {
-            return ImmutableArray<IndexedBlockItem>.Empty;
+            return Enumerable.Empty<(long Index, BlockHash Hash)>();
         }
 
         var query = Db.Query("Blocks")
-            .Select("Index", "Hash", "MinerAddress")
+            .Select("Index", "Hash")
             .Limit(limit)
             .Offset(offset);
         query = miner is { } minerValue
             ? query.Where("MinerAddress", minerValue.ByteArray.ToArray())
             : query;
         query = desc ? query.OrderByDesc("Index") : query.OrderBy("Index");
-        return query.Get<(long, byte[], byte[])>()
-            .Select(result => IndexedBlockItem.FromTuple(result)!.Value)
-            .ToImmutableArray();
+        return query.Get<(long, byte[])>()
+            .Select(result => (result.Item1, new BlockHash(result.Item2)));
     }
 
     /// <inheritdoc />
-    public override IImmutableList<IndexedTransactionItem>
-        GetSignedTransactions(Address signer, int? offset, int? limit, bool desc)
+    public override IEnumerable<TxId>
+        GetSignedTxIdsByAddress(Address signer, int? offset, int? limit, bool desc)
     {
         EnsureReady();
         if (limit == 0)
         {
-            return ImmutableArray<IndexedTransactionItem>.Empty;
+            return Enumerable.Empty<TxId>();
         }
 
         var query = Db.Query("Transactions")
             .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
-            .Select(
-                "Transactions.Id",
-                "Transactions.SystemActionTypeId",
-                "Transactions.SignerAddress",
-                "Transactions.BlockHash")
+            .Select("Transactions.Id")
             .Where("Transactions.SignerAddress", signer.ByteArray.ToArray());
         query = desc
             ? query.OrderByDesc("Blocks.Index", "Transactions.Id")
             : query.OrderBy("Blocks.Index", "Transactions.Id");
         query = limit is { } limitVal ? query.Limit(limitVal) : query;
         query = offset is { } offsetVal ? query.Offset(offsetVal) : query;
-        return query.Get<(byte[], short?, byte[], byte[])>()
-            .Select(result => IndexedTransactionItem.FromTuple(result)!.Value)
-            .ToImmutableArray();
+        return query.Get<byte[]>()
+            .Select(result => new TxId(result));
     }
 
     /// <inheritdoc />
-    public override IImmutableList<IndexedTransactionItem>
-        GetInvolvedTransactions(Address address, int? offset, int? limit, bool desc)
+    public override IEnumerable<TxId>
+        GetInvolvedTxIdsByAddress(Address address, int? offset, int? limit, bool desc)
     {
         EnsureReady();
         if (limit == 0)
         {
-            return ImmutableArray<IndexedTransactionItem>.Empty;
+            return Enumerable.Empty<TxId>();
         }
 
         var query = Db.Query("Transactions")
@@ -139,24 +131,19 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 "AccountTransaction.InvolvedTransactionsId",
                 "Transactions.Id")
             .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
-            .Select(
-                "Transactions.Id",
-                "Transactions.SystemActionTypeId",
-                "Transactions.SignerAddress",
-                "Transactions.BlockHash")
+            .Select("Transactions.Id")
             .Where("AccountTransaction.UpdatedAddressesAddress", address.ByteArray.ToArray());
         query = desc
             ? query.OrderByDesc("Blocks.Index", "Transactions.Id")
             : query.OrderBy("Blocks.Index", "Transactions.Id");
         query = limit is { } limitVal ? query.Limit(limitVal) : query;
         query = offset is { } offsetVal ? query.Offset(offsetVal) : query;
-        return query.Get<(byte[], short?, byte[], byte[])>()
-            .Select(result => IndexedTransactionItem.FromTuple(result)!.Value)
-            .ToImmutableArray();
+        return query.Get<byte[]>()
+            .Select(result => new TxId(result));
     }
 
     /// <inheritdoc />
-    public override long? AccountLastNonce(Address address)
+    public override long? GetLastNonceByAddress(Address address)
     {
         EnsureReady();
         return Db.Query("Accounts")
@@ -166,73 +153,88 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
     }
 
     /// <inheritdoc />
-    public override bool TryGetContainedBlock(TxId txId, out IndexedBlockItem containedBlock)
+    public override bool TryGetContainedBlockHashById(TxId txId, out BlockHash containedBlock)
     {
         EnsureReady();
         containedBlock = default;
-        var item = IndexedBlockItem.FromTuple(
-            Db.Query("Transactions")
-                .Select("Blocks.Index", "Blocks.Hash", "Blocks.MinerAddress")
-                .Where("Transactions.Id", txId.ByteArray.ToArray())
-                .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
-                .FirstOrDefault<(long, byte[], byte[])>());
-        if (item is not { } itemValue)
+        var item = Db.Query("Transactions")
+            .Select("Blocks.Hash")
+            .Where("Transactions.Id", txId.ByteArray.ToArray())
+            .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
+            .FirstOrDefault<byte[]>();
+        if (item is not { })
         {
             return false;
         }
 
-        containedBlock = itemValue;
+        containedBlock = new BlockHash(item);
         return true;
     }
 
     /// <inheritdoc />
-    protected override IndexedBlockItem? GetTipImpl() =>
-        IndexedBlockItem.FromTuple(
-            Db.Query("Blocks")
-                .Select("Index", "Hash", "MinerAddress")
-                .OrderByDesc("Index")
-                .FirstOrDefault<(long, byte[], byte[])>());
+    protected override (long Index, BlockHash Hash)? GetTipImpl()
+    {
+        (long? Index, byte[]? Hash) tipData = Db.Query("Blocks")
+            .Select("Index", "Hash")
+            .OrderByDesc("Index")
+            .FirstOrDefault<(long?, byte[])>();
+        return tipData is { Index: { } index, Hash: { } hash }
+            ? (index, new BlockHash(hash))
+            : null;
+    }
 
     /// <inheritdoc />
-    protected override async Task<IndexedBlockItem?> GetTipAsyncImpl() =>
-        IndexedBlockItem.FromTuple(
-            await Db.Query("Blocks")
-                .Select("Index", "Hash", "MinerAddress")
-                .OrderByDesc("Index")
-                .FirstOrDefaultAsync<(long, byte[], byte[])>());
+    protected override async Task<(long Index, BlockHash Hash)?> GetTipAsyncImpl()
+    {
+        (long? Index, byte[]? Hash) tipData = await Db.Query("Blocks")
+            .Select("Index", "Hash")
+            .OrderByDesc("Index")
+            .FirstOrDefaultAsync<(long?, byte[])>();
+        return tipData is { Index: { } index, Hash: { } hash }
+            ? (index, new BlockHash(hash))
+            : null;
+    }
 
     /// <inheritdoc />
-    protected override IndexedBlockItem GetIndexedBlockImpl(long index) =>
-        IndexedBlockItem.FromTuple(
-            Db.Query("Blocks")
-                .Select("Index", "Hash", "MinerAddress")
-                .Where("Index", index >= 0 ? index : (GetTipImpl()?.Index ?? 0) + index + 1)
-                .FirstOrDefault<(long, byte[], byte[])>())
-        ?? throw new IndexOutOfRangeException($"The block #{index} does not exist in the index.");
+    protected override BlockHash IndexToBlockHashImpl(long index)
+    {
+        var blockHashBytes = Db.Query("Blocks")
+            .Select("Hash")
+            .Where("Index", index >= 0 ? index : (GetTipImpl()?.Index ?? 0) + index + 1)
+            .FirstOrDefault<byte[]>();
+        return blockHashBytes is { }
+            ? new BlockHash(blockHashBytes)
+            : throw new IndexOutOfRangeException(
+                $"The block #{index} does not exist in the index.");
+    }
 
     /// <inheritdoc />
-    protected override async Task<IndexedBlockItem> GetIndexedBlockAsyncImpl(long index) =>
-        IndexedBlockItem.FromTuple(
-            await Db.Query("Blocks")
-                .Select("Index", "Hash", "MinerAddress")
-                .Where(
-                    "Index",
-                    index >= 0 ? index : ((await GetTipAsyncImpl())?.Index ?? 0) + index + 1)
-                .FirstOrDefaultAsync<(long, byte[], byte[])>())
-        ?? throw new IndexOutOfRangeException($"The block #{index} does not exist in the index.");
+    protected override async Task<BlockHash> IndexToBlockHashAsyncImpl(long index)
+    {
+        var blockHashBytes = await Db.Query("Blocks")
+            .Select("Hash")
+            .Where(
+                "Index",
+                index >= 0 ? index : ((await GetTipAsyncImpl())?.Index ?? 0) + index + 1)
+            .FirstOrDefaultAsync<byte[]>();
+        return blockHashBytes is { }
+            ? new BlockHash(blockHashBytes)
+            : throw new IndexOutOfRangeException(
+                $"The block #{index} does not exist in the index.");
+    }
 
     /// <inheritdoc />
-    protected override void AddBlockImpl(
+    protected override void RecordBlockImpl(
         BlockDigest blockDigest,
         IEnumerable<ITransaction> txs,
-        IAddBlockContext? context,
+        IRecordBlockContext? context,
         CancellationToken? stoppingToken)
     {
         var minerAddress = blockDigest.Miner.ByteArray.ToArray();
         var blockHash = blockDigest.Hash.ByteArray.ToArray();
 
         var scope
-            = ((SqliteAddBlockContext?)context)?.Transaction ?? Db.Connection.BeginTransaction();
+            = ((SqliteRecordBlockContext?)context)?.Transaction ?? Db.Connection.BeginTransaction();
         Db.Statement($"SAVEPOINT \"{blockDigest.Hash.ToString()}\"", scope);
         void Rollback()
         {
@@ -412,17 +414,17 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
     }
 
     /// <inheritdoc />
-    protected override async Task AddBlockAsyncImpl(
+    protected override async Task RecordBlockAsyncImpl(
         BlockDigest blockDigest,
         IEnumerable<ITransaction> txs,
-        IAddBlockContext? context,
+        IRecordBlockContext? context,
         CancellationToken? stoppingToken)
     {
         var minerAddress = blockDigest.Miner.ByteArray.ToArray();
         var blockHash = blockDigest.Hash.ByteArray.ToArray();
 
         var scope
-            = ((SqliteAddBlockContext?)context)?.Transaction ?? Db.Connection.BeginTransaction();
+            = ((SqliteRecordBlockContext?)context)?.Transaction ?? Db.Connection.BeginTransaction();
         await Db.StatementAsync($"SAVEPOINT \"{blockDigest.Hash.ToString()}\"", scope);
         async Task Rollback()
         {
@@ -601,15 +603,15 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         }
     }
 
-    protected override IAddBlockContext GetAddBlockContext() =>
-        new SqliteAddBlockContext(Db.Connection.BeginTransaction());
+    protected override IRecordBlockContext GetRecordBlockContext() =>
+        new SqliteRecordBlockContext(Db.Connection.BeginTransaction());
 
-    protected override void FinalizeAddBlockContext(IAddBlockContext context, bool commit)
+    protected override void FinalizeRecordBlockContext(IRecordBlockContext context, bool commit)
     {
-        if (context is not SqliteAddBlockContext sqliteContext)
+        if (context is not SqliteRecordBlockContext sqliteContext)
         {
             throw new ArgumentException(
-                $"Received an unsupported {nameof(IAddBlockContext)}: {context.GetType()}");
+                $"Received an unsupported {nameof(IRecordBlockContext)}: {context.GetType()}");
         }
 
         if (commit)

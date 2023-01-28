@@ -242,7 +242,7 @@ namespace Libplanet.Explorer.Queries
                     var txId = new TxId(
                         ByteUtil.ParseHex(context.GetArgument<string>("txId"))
                     );
-                    if (!index.TryGetContainedBlock(txId, out var indexedBlockItem))
+                    if (!index.TryGetContainedBlockHashById(txId, out var indexedBlockItem))
                     {
                         return blockChain.GetStagedTransactionIds().Contains(txId)
                             ? new TxResult(
@@ -268,10 +268,10 @@ namespace Libplanet.Explorer.Queries
                     try
                     {
                         var execution = blockChain.GetTxExecution(
-                            indexedBlockItem.Hash,
+                            indexedBlockItem,
                             txId
                         );
-                        var txExecutedBlock = blockChain[indexedBlockItem.Hash];
+                        var txExecutedBlock = blockChain[indexedBlockItem];
 
                         var updatedStates = ((TxSuccess)execution).UpdatedStates;
                         var updatedFungibleAssets = ((TxSuccess)execution).UpdatedFungibleAssets;

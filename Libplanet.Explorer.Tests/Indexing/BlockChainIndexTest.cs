@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
-using Bencodex.Types;
-using Libplanet.Action.Sys;
 using Libplanet.Blocks;
 using Libplanet.Explorer.Indexing;
 using Libplanet.Tx;
@@ -28,7 +26,8 @@ public abstract class BlockChainIndexTest
     protected BlockChainIndexTest()
     {
         RandomGenerator = new Random();
-        ChainFx = new GeneratedBlockChainFixture(RandomGenerator.Next(), BlockCount, MaxTxCount);
+        ChainFx = new GeneratedBlockChainFixture(
+            RandomGenerator.Next(), BlockCount, MaxTxCount);
     }
 
     [Fact]
@@ -37,25 +36,25 @@ public abstract class BlockChainIndexTest
         var unpreparedIndex = Fx.CreateEphemeralIndexInstance();
         Assert.Throws<IndexNotReadyException>(() => unpreparedIndex.Tip);
         Assert.Throws<IndexNotReadyException>(
-            () => unpreparedIndex.AccountLastNonce(new Address()));
+            () => unpreparedIndex.GetLastNonceByAddress(new Address()));
         Assert.Throws<IndexNotReadyException>(
-            () => unpreparedIndex.GetContainedBlock(new TxId()));
+            () => unpreparedIndex.GetContainedBlockHashByTxId(new TxId()));
         Assert.Throws<IndexNotReadyException>(
-            () => unpreparedIndex.GetIndexedBlock(new BlockHash()));
-        Assert.Throws<IndexNotReadyException>(() => unpreparedIndex.GetIndexedBlock(0));
-        Assert.Throws<IndexNotReadyException>(() => unpreparedIndex.GetIndexedBlocks());
+            () => unpreparedIndex.BlockHashToIndex(new BlockHash()));
+        Assert.Throws<IndexNotReadyException>(() => unpreparedIndex.IndexToBlockHash(0));
+        Assert.Throws<IndexNotReadyException>(() => unpreparedIndex.GetBlockHashesByOffset());
         Assert.Throws<IndexNotReadyException>(
-            () => unpreparedIndex.GetInvolvedTransactions(new Address()));
+            () => unpreparedIndex.GetInvolvedTxIdsByAddress(new Address()));
         Assert.Throws<IndexNotReadyException>(
-            () => unpreparedIndex.GetSignedTransactions(new Address()));
+            () => unpreparedIndex.GetSignedTxIdsByAddress(new Address()));
         await Assert.ThrowsAsync<IndexNotReadyException>(
             async () => await unpreparedIndex.GetTipAsync());
         await Assert.ThrowsAsync<IndexNotReadyException>(
-            async () => await unpreparedIndex.GetIndexedBlockAsync(new BlockHash()));
+            async () => await unpreparedIndex.BlockHashToIndexAsync(new BlockHash()));
         await Assert.ThrowsAsync<IndexNotReadyException>(
-            async () => await unpreparedIndex.GetIndexedBlockAsync(0));
+            async () => await unpreparedIndex.IndexToBlockHashAsync(0));
         Assert.Throws<IndexNotReadyException>(
-            () => unpreparedIndex.TryGetContainedBlock(new TxId(), out _));
+            () => unpreparedIndex.TryGetContainedBlockHashById(new TxId(), out _));
 
         // ReSharper disable once MethodHasAsyncOverload
         unpreparedIndex.Bind(ChainFx.Chain);
@@ -65,18 +64,18 @@ public abstract class BlockChainIndexTest
         var forkedChain = ChainFx.Chain.Fork(ChainFx.Chain.Tip.PreviousHash!.Value);
         await forkedChain.MineBlock(ChainFx.PrivateKeys[0]);
         // ReSharper disable once MethodHasAsyncOverload
-        populatedIndex.AddBlock(
+        populatedIndex.RecordBlock(
             ChainFx.Chain.Store.GetBlockDigest(ChainFx.Chain.Tip.Hash)!.Value,
             ChainFx.Chain.Tip.Transactions);
-        await populatedIndex.AddBlockAsync(
+        await populatedIndex.RecordBlockAsync(
             ChainFx.Chain.Store.GetBlockDigest(ChainFx.Chain.Tip.Hash)!.Value,
             ChainFx.Chain.Tip.Transactions);
         Assert.Throws<IndexMismatchException>(
-            () => populatedIndex.AddBlock(
+            () => populatedIndex.RecordBlock(
                 forkedChain.Store.GetBlockDigest(forkedChain.Tip.Hash)!.Value,
                 forkedChain.Tip.Transactions));
         await Assert.ThrowsAsync<IndexMismatchException>(
-            async () => await populatedIndex.AddBlockAsync(
+            async () => await populatedIndex.RecordBlockAsync(
                 forkedChain.Store.GetBlockDigest(forkedChain.Tip.Hash)!.Value,
                 forkedChain.Tip.Transactions));
     }
@@ -88,54 +87,61 @@ public abstract class BlockChainIndexTest
         Assert.Equal(tip, Fx.Index.Tip);
         Assert.Equal(ChainFx.Chain.Tip.Hash, tip.Hash);
         Assert.Equal(ChainFx.Chain.Tip.Index, tip.Index);
-        Assert.Equal(ChainFx.Chain.Tip.Miner, tip.Miner);
     }
 
     [Fact]
-    public void AccountLastNonce()
+    public void GetLastNonceByAddress()
     {
         foreach (var pk in ChainFx.PrivateKeys)
         {
             var address = pk.ToAddress();
-            Assert.Equal(ChainFx.Chain.GetNextTxNonce(address) - 1, Fx.Index.AccountLastNonce(address));
+            Assert.Equal(
+                ChainFx.Chain.GetNextTxNonce(address) - 1,
+                Fx.Index.GetLastNonceByAddress(address));
         }
 
-        Assert.Null(Fx.Index.AccountLastNonce(new Address()));
+        Assert.Null(Fx.Index.GetLastNonceByAddress(new Address()));
     }
 
     [Fact]
-    public async void GetIndexedBlock()
+    public async void BlockHashToIndex()
     {
         for (var i = 0; i < ChainFx.Chain.Count; i++)
         {
             var inChain = ChainFx.Chain[i];
-            var indexed = await Fx.Index.GetIndexedBlockAsync(i);
-            // ReSharper disable MethodHasAsyncOverload
-            Assert.Equal(indexed, Fx.Index.GetIndexedBlock(i));
-            Assert.Equal(indexed, Fx.Index.GetIndexedBlock(inChain.Hash));
-            // ReSharper restore MethodHasAsyncOverload
-            Assert.Equal(indexed, await Fx.Index.GetIndexedBlockAsync(inChain.Hash));
-            Assert.Equal(inChain.Hash, indexed.Hash);
-            Assert.Equal(inChain.Index, indexed.Index);
-            Assert.Equal(inChain.Miner, indexed.Miner);
+            // ReSharper disable once MethodHasAsyncOverload
+            Assert.Equal(i, Fx.Index.BlockHashToIndex(inChain.Hash));
+            Assert.Equal(i, await Fx.Index.BlockHashToIndexAsync(inChain.Hash));
         }
 
-        Assert.Throws<IndexOutOfRangeException>(() => Fx.Index.GetIndexedBlock(new BlockHash()));
+        Assert.Throws<IndexOutOfRangeException>(() => Fx.Index.BlockHashToIndex(new BlockHash()));
         await Assert.ThrowsAsync<IndexOutOfRangeException>(
-            async () => await Fx.Index.GetIndexedBlockAsync(new BlockHash()));
+            async () => await Fx.Index.BlockHashToIndexAsync(new BlockHash()));
+    }
 
-        Assert.Throws<IndexOutOfRangeException>(() => Fx.Index.GetIndexedBlock(long.MaxValue));
+    [Fact]
+    public async void IndexToBlockHash()
+    {
+        for (var i = 0; i < ChainFx.Chain.Count; i++)
+        {
+            var inChain = ChainFx.Chain[i];
+            // ReSharper disable once MethodHasAsyncOverload
+            Assert.Equal(inChain.Hash, Fx.Index.IndexToBlockHash(i));
+            Assert.Equal(inChain.Hash, await Fx.Index.IndexToBlockHashAsync(i));
+        }
+
+        Assert.Throws<IndexOutOfRangeException>(() => Fx.Index.IndexToBlockHash(long.MaxValue));
         await Assert.ThrowsAsync<IndexOutOfRangeException>(
-            async () => await Fx.Index.GetIndexedBlockAsync(long.MaxValue));
+            async () => await Fx.Index.IndexToBlockHashAsync(long.MaxValue));
 
         Assert.Equal(
-            await Fx.Index.GetIndexedBlockAsync(Fx.Index.Tip.Index),
-            await Fx.Index.GetIndexedBlockAsync(-1));
+            await Fx.Index.IndexToBlockHashAsync(Fx.Index.Tip.Index),
+            await Fx.Index.IndexToBlockHashAsync(-1));
     }
 
     [Theory]
     [MemberData(nameof(BooleanPermutation3))]
-    public void GetIndexedBlocks(bool offsetPresent, bool limitPresent, bool desc)
+    public void GetBlockHashes(bool offsetPresent, bool limitPresent, bool desc)
     {
         int? offset = offsetPresent ? BlockCount / 4 : null;
         int? limit = limitPresent ? BlockCount / 2 : null;
@@ -147,25 +153,39 @@ public abstract class BlockChainIndexTest
         var inChain = Enumerable.Range(offset ?? 0, rangeEnd - (offset ?? 0))
             .Select(i => blocks[i])
             .ToImmutableArray();
-        var indexed = Fx.Index.GetIndexedBlocks(offset, limit, desc);
+        var indexed = Fx.Index.GetBlockHashesByOffset(offset, limit, desc).ToArray();
         Assert.Equal(
             indexed,
-            Fx.Index.GetIndexedBlocks(
-                (offset ?? 0)..rangeEnd,
-                desc));
-        Assert.Equal(inChain.Length, indexed.Count);
-        for (var i = 0; i < indexed.Count; i++)
+            Fx.Index.GetBlockHashesByRange((offset ?? 0)..rangeEnd, desc));
+        if (!desc)
+        {
+            Assert.Equal(
+                indexed.Select(tuple => tuple.Hash),
+                Fx.Index[(offset ?? 0)..rangeEnd]);
+        }
+
+        Assert.Equal(inChain.Length, indexed.Length);
+        for (var i = 0; i < indexed.Length; i++)
         {
             Assert.Equal(inChain[i].Hash, indexed[i].Hash);
             Assert.Equal(inChain[i].Index, indexed[i].Index);
-            Assert.Equal(inChain[i].Miner, indexed[i].Miner);
         }
     }
 
     [Theory]
     [MemberData(nameof(SpecialRanges))]
-    public void GetIndexedBlocksRangeSpecial(Range special, Range regular, bool desc) =>
-        Assert.Equal(Fx.Index.GetIndexedBlocks(regular, desc), Fx.Index.GetIndexedBlocks(special, desc));
+    public void GetBlockHashesByRangeSpecial(Range special, Range regular, bool desc)
+    {
+        Assert.Equal(
+            Fx.Index.GetBlockHashesByRange(regular, desc),
+            Fx.Index.GetBlockHashesByRange(special, desc));
+        if (!desc)
+        {
+            Assert.Equal(
+                Fx.Index[regular],
+                Fx.Index[special]);
+        }
+    }
 
     public static IEnumerable<object[]> SpecialRanges =>
         new[]
@@ -183,7 +203,7 @@ public abstract class BlockChainIndexTest
 
     [Theory]
     [MemberData(nameof(BooleanPermutation3))]
-    public void GetIndexedBlocksWithMiner(bool offsetPresent, bool limitPresent, bool desc)
+    public void GetBlockHashesByMiner(bool offsetPresent, bool limitPresent, bool desc)
     {
         foreach (var pk in ChainFx.PrivateKeys)
         {
@@ -195,37 +215,35 @@ public abstract class BlockChainIndexTest
             inChain = inChain[
                 (offset ?? 0)
                 ..(limit is { } limitValue ? (offset ?? 0) + limitValue : inChain.Length)];
-            var indexed = Fx.Index.GetIndexedBlocks(offset, limit, desc, address);
-            Assert.Equal(inChain.Length, indexed.Count);
-            for (var i = 0; i < indexed.Count; i++)
+            var indexed = Fx.Index.GetBlockHashesByOffset(offset, limit, desc, address).ToArray();
+            Assert.Equal(inChain.Length, indexed.Length);
+            for (var i = 0; i < indexed.Length; i++)
             {
                 Assert.Equal(inChain[i].Hash, indexed[i].Hash);
                 Assert.Equal(inChain[i].Index, indexed[i].Index);
-                Assert.Equal(inChain[i].Miner, indexed[i].Miner);
             }
         }
     }
 
     [Fact]
-    public void GetContainedBlock()
+    public void GetContainedBlockHashByTxId()
     {
         for (var i = 0; i < ChainFx.Chain.Count; i++)
         {
             foreach (var txId in ChainFx.Chain[i].Transactions.Select(tx => tx.Id))
             {
-                var indexed = Fx.Index.GetContainedBlock(txId);
-                Assert.Equal(ChainFx.Chain[i].Hash, indexed.Hash);
-                Assert.Equal(ChainFx.Chain[i].Index, indexed.Index);
-                Assert.Equal(ChainFx.Chain[i].Miner, indexed.Miner);
+                var indexed = Fx.Index.GetContainedBlockHashByTxId(txId);
+                Assert.Equal(ChainFx.Chain[i].Hash, indexed);
             }
         }
 
-        Assert.Throws<IndexOutOfRangeException>(() => Fx.Index.GetContainedBlock(new TxId()));
+        Assert.Throws<IndexOutOfRangeException>(
+            () => Fx.Index.GetContainedBlockHashByTxId(new TxId()));
     }
 
     [Theory]
     [MemberData(nameof(BooleanPermutation3))]
-    public void GetSignedTransactions(bool offsetPresent, bool limitPresent, bool desc)
+    public void GetSignedTxIdsByAddress(bool offsetPresent, bool limitPresent, bool desc)
     {
         foreach (var pk in ChainFx.PrivateKeys)
         {
@@ -237,17 +255,11 @@ public abstract class BlockChainIndexTest
             inChain = inChain[
                 (offset ?? 0)
                 ..(limit is { } limitValue ? (offset ?? 0) + limitValue : inChain.Length)];
-            var indexed = Fx.Index.GetSignedTransactions(address, offset, limit, desc);
-            Assert.Equal(inChain.Length, indexed.Count);
-            for (var i = 0; i < indexed.Count; i++)
+            var indexed = Fx.Index.GetSignedTxIdsByAddress(address, offset, limit, desc).ToArray();
+            Assert.Equal(inChain.Length, indexed.Length);
+            for (var i = 0; i < indexed.Length; i++)
             {
-                Assert.Equal(inChain[i].Id, indexed[i].Id);
-                Assert.Equal(inChain[i].Signer, indexed[i].Signer);
-                Assert.Equal(
-                    inChain[i].SystemAction is { } systemAction
-                        ? (Integer)Registry.Serialize(systemAction)["type_id"]
-                    : null,
-                    indexed[i].SystemActionTypeId);
+                Assert.Equal(inChain[i].Id, indexed[i]);
             }
         }
     }
@@ -255,7 +267,7 @@ public abstract class BlockChainIndexTest
 
     [Theory]
     [MemberData(nameof(BooleanPermutation3))]
-    public void GetInvolvedTransactions(bool offsetPresent, bool limitPresent, bool desc)
+    public void GetInvolvedTxIdsByAddress(bool offsetPresent, bool limitPresent, bool desc)
     {
         foreach (var pk in ChainFx.PrivateKeys)
         {
@@ -267,17 +279,11 @@ public abstract class BlockChainIndexTest
             inChain = inChain[
                 (offset ?? 0)
                 ..(limit is { } limitValue ? (offset ?? 0) + limitValue : inChain.Length)];
-            var indexed = Fx.Index.GetInvolvedTransactions(address, offset, limit, desc);
-            Assert.Equal(inChain.Length, indexed.Count);
-            for (var i = 0; i < indexed.Count; i++)
+            var indexed = Fx.Index.GetInvolvedTxIdsByAddress(address, offset, limit, desc).ToArray();
+            Assert.Equal(inChain.Length, indexed.Length);
+            for (var i = 0; i < indexed.Length; i++)
             {
-                Assert.Equal(inChain[i].Id, indexed[i].Id);
-                Assert.Equal(inChain[i].Signer, indexed[i].Signer);
-                Assert.Equal(
-                    inChain[i].SystemAction is { } systemAction
-                        ? (Integer)Registry.Serialize(systemAction)["type_id"]
-                        : null,
-                    indexed[i].SystemActionTypeId);
+                Assert.Equal(inChain[i].Id, indexed[i]);
             }
         }
     }
