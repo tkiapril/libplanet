@@ -89,6 +89,11 @@ namespace Libplanet.Explorer.Cocona.Commands
                         $"Data Source={string.Join('+', uri.ToString().Split('+')[1..])}"));
             }
 
+            if (protocol is "rocksdb" && transport is "file")
+            {
+                return new RocksDbBlockChainIndex(uri.LocalPath);
+            }
+
             throw new ArgumentException(
                 $"The index URI scheme {uri.Scheme}:// is not supported.",
                 nameof(uriString)
