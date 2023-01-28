@@ -83,8 +83,12 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     }
 
     /// <inheritdoc />
-    public abstract IEnumerable<(long Index, BlockHash Hash)>
-        GetBlockHashesByOffset(int? offset, int? limit, bool desc, Address? miner);
+    public IEnumerable<(long Index, BlockHash Hash)>
+        GetBlockHashesByOffset(int? offset, int? limit, bool desc, Address? miner)
+    {
+        EnsureReady();
+        return GetBlockHashesByOffsetImpl(offset, limit, desc, miner);
+    }
 
     /// <inheritdoc />
     public abstract IEnumerable<TxId>
@@ -373,6 +377,9 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     protected abstract BlockHash IndexToBlockHashImpl(long index);
 
     protected abstract Task<BlockHash> IndexToBlockHashAsyncImpl(long index);
+
+    protected abstract IEnumerable<(long Index, BlockHash Hash)>
+        GetBlockHashesByOffsetImpl(int? offset, int? limit, bool desc, Address? miner);
 
     protected abstract void RecordBlockImpl(
         BlockDigest blockDigest,

@@ -70,30 +70,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
     }
 
     /// <inheritdoc />
-    public override IEnumerable<(long Index, BlockHash Hash)>
-        GetBlockHashesByOffset(int? offset, int? limit, bool desc, Address? miner)
-    {
-        EnsureReady();
-        if (limit == 0)
-        {
-            return Enumerable.Empty<(long Index, BlockHash Hash)>();
-        }
-
-        var query = Db.Query("Blocks")
-            .Select("Index", "Hash")
-            .Offset(offset ?? 0);
-        query = limit is { } limitVal
-            ? query.Limit(limitVal)
-            : query;
-        query = miner is { } minerVal
-            ? query.Where("MinerAddress", minerVal.ByteArray.ToArray())
-            : query;
-        query = desc ? query.OrderByDesc("Index") : query.OrderBy("Index");
-        return query.Get<(long, byte[])>()
-            .Select(result => (result.Item1, new BlockHash(result.Item2)));
-    }
-
-    /// <inheritdoc />
     public override IEnumerable<TxId>
         GetSignedTxIdsByAddress(Address signer, int? offset, int? limit, bool desc)
     {
@@ -172,7 +148,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         return true;
     }
 
-    /// <inheritdoc />
     protected override (long Index, BlockHash Hash)? GetTipImpl()
     {
         (long? Index, byte[]? Hash) tipData = Db.Query("Blocks")
@@ -184,7 +159,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             : null;
     }
 
-    /// <inheritdoc />
     protected override async Task<(long Index, BlockHash Hash)?> GetTipAsyncImpl()
     {
         (long? Index, byte[]? Hash) tipData = await Db.Query("Blocks")
@@ -196,7 +170,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             : null;
     }
 
-    /// <inheritdoc />
     protected override BlockHash IndexToBlockHashImpl(long index)
     {
         var blockHashBytes = Db.Query("Blocks")
@@ -209,7 +182,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 $"The block #{index} does not exist in the index.");
     }
 
-    /// <inheritdoc />
     protected override async Task<BlockHash> IndexToBlockHashAsyncImpl(long index)
     {
         var blockHashBytes = await Db.Query("Blocks")
@@ -224,6 +196,29 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 $"The block #{index} does not exist in the index.");
     }
 
+    protected override IEnumerable<(long Index, BlockHash Hash)>
+        GetBlockHashesByOffsetImpl(int? offset, int? limit, bool desc, Address? miner)
+    {
+        if (limit == 0)
+        {
+            return Enumerable.Empty<(long Index, BlockHash Hash)>();
+        }
+
+        var query = Db.Query("Blocks")
+            .Select("Index", "Hash")
+            .Offset(offset ?? 0);
+        query = limit is { } limitVal
+            ? query.Limit(limitVal)
+            : query;
+        query = miner is { } minerVal
+            ? query.Where("MinerAddress", minerVal.ByteArray.ToArray())
+            : query;
+        query = desc ? query.OrderByDesc("Index") : query.OrderBy("Index");
+        return query.Get<(long, byte[])>()
+            .Select(result => (result.Item1, new BlockHash(result.Item2)));
+    }
+
+#pragma warning disable MEN003
     /// <inheritdoc />
     protected override void RecordBlockImpl(
         BlockDigest blockDigest,
