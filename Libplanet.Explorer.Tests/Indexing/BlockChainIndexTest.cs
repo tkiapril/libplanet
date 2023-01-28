@@ -172,6 +172,13 @@ public abstract class BlockChainIndexTest
         }
     }
 
+    [Fact]
+    public void GetBlockHashesByRangeOutOfRange()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Fx.Index.GetBlockHashesByRange(..((int)Fx.Index.Tip.Index + 2)));
+    }
+
     [Theory]
     [MemberData(nameof(SpecialRanges))]
     public void GetBlockHashesByRangeSpecial(Range special, Range regular, bool desc)

@@ -74,20 +74,17 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     }
 
     /// <inheritdoc />
-    public abstract IEnumerable<(long Index, BlockHash Hash)>
-        GetBlockHashesByRange(Range indexRange, bool desc, Address? miner);
+    public IEnumerable<(long Index, BlockHash Hash)>
+        GetBlockHashesByRange(Range indexRange, bool desc, Address? miner)
+    {
+        EnsureReady();
+        var (offset, limit) = indexRange.GetOffsetAndLength((int)(Tip.Index + 1 & int.MaxValue));
+        return GetBlockHashesByOffset(offset, limit, desc, miner);
+    }
 
     /// <inheritdoc />
-    public IEnumerable<(long Index, BlockHash Hash)>
-        GetBlockHashesByOffset(int? offset, int? limit, bool desc, Address? miner) =>
-        GetBlockHashesByRange(
-            new Range(
-                new Index(offset ?? 0),
-                limit is { } limitValue
-                    ? new Index((offset ?? 0) + limitValue)
-                    : new Index(0, true)),
-            desc,
-            miner);
+    public abstract IEnumerable<(long Index, BlockHash Hash)>
+        GetBlockHashesByOffset(int? offset, int? limit, bool desc, Address? miner);
 
     /// <inheritdoc />
     public abstract IEnumerable<TxId>

@@ -80,6 +80,8 @@ public interface IBlockChainIndex
     /// <returns>The height and the <see cref="BlockHash"/> of the indexed <see cref="Block{T}"/>s
     /// in the given <paramref name="indexRange"/>.</returns>
     /// <exception cref="IndexNotReadyException">Thrown if the index is not ready.</exception>
+    /// <exception cref="IndexOutOfRangeException">Thrown if the given range exceeds the block
+    /// count.</exception>
     IEnumerable<(long Index, BlockHash Hash)> GetBlockHashesByRange(
         Range indexRange, bool desc = false, Address? miner = null);
 

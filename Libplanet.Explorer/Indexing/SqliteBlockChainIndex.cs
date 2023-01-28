@@ -71,10 +71,9 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
     /// <inheritdoc />
     public override IEnumerable<(long Index, BlockHash Hash)>
-        GetBlockHashesByRange(Range indexRange, bool desc, Address? miner)
+        GetBlockHashesByOffset(int? offset, int? limit, bool desc, Address? miner)
     {
         EnsureReady();
-        var (offset, limit) = indexRange.GetOffsetAndLength((int)((Tip.Index + 1) & int.MaxValue));
         if (limit == 0)
         {
             return Enumerable.Empty<(long Index, BlockHash Hash)>();
@@ -82,10 +81,12 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
 
         var query = Db.Query("Blocks")
             .Select("Index", "Hash")
-            .Limit(limit)
-            .Offset(offset);
-        query = miner is { } minerValue
-            ? query.Where("MinerAddress", minerValue.ByteArray.ToArray())
+            .Offset(offset ?? 0);
+        query = limit is { } limitVal
+            ? query.Limit(limitVal)
+            : query;
+        query = miner is { } minerVal
+            ? query.Where("MinerAddress", minerVal.ByteArray.ToArray())
             : query;
         query = desc ? query.OrderByDesc("Index") : query.OrderBy("Index");
         return query.Get<(long, byte[])>()
