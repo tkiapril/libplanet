@@ -16,6 +16,8 @@ internal class Transaction
 
     public Account Signer { get; set; } = null!;
 
+    public long Nonce { get; set; }
+
     public IEnumerable<Account> UpdatedAddresses => null!;
 
     public byte[] BlockHash { get; set; } = null!;

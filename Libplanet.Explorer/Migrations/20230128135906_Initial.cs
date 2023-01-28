@@ -14,8 +14,7 @@ namespace Libplanet.Explorer.Migrations
                 name: "Accounts",
                 columns: table => new
                 {
-                    Address = table.Column<byte[]>(type: "binary(20)", nullable: false),
-                    LastNonce = table.Column<long>(type: "INTEGER", nullable: true)
+                    Address = table.Column<byte[]>(type: "binary(20)", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -58,6 +57,7 @@ namespace Libplanet.Explorer.Migrations
                     Id = table.Column<byte[]>(type: "binary(32)", nullable: false),
                     SystemActionTypeId = table.Column<short>(type: "INTEGER", nullable: true),
                     SignerAddress = table.Column<byte[]>(type: "binary(20)", nullable: false),
+                    Nonce = table.Column<long>(type: "INTEGER", nullable: false),
                     BlockHash = table.Column<byte[]>(type: "binary(32)", nullable: false)
                 },
                 constraints: table =>

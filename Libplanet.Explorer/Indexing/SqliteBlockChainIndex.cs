@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Data;
 using System.Linq;
 using System.Threading;
@@ -123,9 +122,10 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
     public override long? GetLastNonceByAddress(Address address)
     {
         EnsureReady();
-        return Db.Query("Accounts")
-            .Select("LastNonce")
-            .Where("Address", address.ByteArray.ToArray())
+        return Db.Query("Transactions")
+            .Select("Nonce")
+            .Where("SignerAddress", address.ByteArray.ToArray())
+            .OrderByDesc("Nonce")
             .FirstOrDefault<long?>();
     }
 
@@ -278,8 +278,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 blockDigest.Index, GetTipImpl()!.Value.Hash, blockDigest.Hash);
         }
 
-        var txNonces = ImmutableDictionary<Address, long>.Empty;
-
         foreach (var tx in txs)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
@@ -306,6 +304,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                             SystemActionTypeId = systemActionTypeId,
                             SignerAddress = signerAddress,
                             BlockHash = blockHash,
+                            Nonce = tx.Nonce,
                         },
                         scope);
             }
@@ -321,11 +320,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 continue;
             }
 
-            if (!txNonces.TryGetValue(tx.Signer, out var nonce) || tx.Nonce > nonce)
-            {
-                txNonces = txNonces.SetItem(tx.Signer, tx.Nonce);
-            }
-
             foreach (var address
                      in tx.UpdatedAddresses.Select(address => address.ByteArray.ToArray()))
             {
@@ -335,8 +329,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     return;
                 }
 
-                Db.InsertOrIgnore(
-                    "Accounts", new { Address = address, }, scope);
+                Db.InsertOrIgnore("Accounts", new { Address = address }, scope);
                 Db.Query("AccountTransaction")
                     .Insert(
                         new
@@ -384,21 +377,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             }
 
             Db.Statement($"RELEASE \"{tx.Id.ToString()}\"", scope);
-        }
-
-        foreach (var nonce in txNonces)
-        {
-            if (stoppingToken?.IsCancellationRequested ?? false)
-            {
-                Rollback();
-                return;
-            }
-
-            Db.Query("Accounts")
-                .Where(new { Address = nonce.Key.ByteArray.ToArray() })
-                .Update(
-                    new { LastNonce = nonce.Value },
-                    scope);
         }
 
         Db.Statement($"RELEASE \"{blockDigest.Hash.ToString()}\"", scope);
@@ -468,8 +446,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 blockDigest.Index, (await GetTipAsyncImpl())!.Value.Hash, blockDigest.Hash);
         }
 
-        var txNonces = ImmutableDictionary<Address, long>.Empty;
-
         foreach (var tx in txs)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
@@ -496,6 +472,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                             SystemActionTypeId = systemActionTypeId,
                             SignerAddress = signerAddress,
                             BlockHash = blockHash,
+                            Nonce = tx.Nonce,
                         },
                         scope);
             }
@@ -511,11 +488,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                 continue;
             }
 
-            if (!txNonces.TryGetValue(tx.Signer, out var nonce) || tx.Nonce > nonce)
-            {
-                txNonces = txNonces.SetItem(tx.Signer, tx.Nonce);
-            }
-
             foreach (var address
                      in tx.UpdatedAddresses.Select(address => address.ByteArray.ToArray()))
             {
@@ -525,8 +497,7 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
                     return;
                 }
 
-                await Db.InsertOrIgnoreAsync(
-                    "Accounts", new { Address = address, }, scope);
+                await Db.InsertOrIgnoreAsync("Accounts", new { Address = address, }, scope);
                 await Db.Query("AccountTransaction")
                     .InsertAsync(
                         new
@@ -574,21 +545,6 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
             }
 
             await Db.StatementAsync($"RELEASE \"{tx.Id.ToString()}\"", scope);
-        }
-
-        foreach (var nonce in txNonces)
-        {
-            if (stoppingToken?.IsCancellationRequested ?? false)
-            {
-                await Rollback();
-                return;
-            }
-
-            await Db.Query("Accounts")
-                .Where(new { Address = nonce.Key.ByteArray.ToArray() })
-                .UpdateAsync(
-                    new { LastNonce = nonce.Value },
-                    scope);
         }
 
         await Db.StatementAsync($"RELEASE \"{blockDigest.Hash.ToString()}\"", scope);

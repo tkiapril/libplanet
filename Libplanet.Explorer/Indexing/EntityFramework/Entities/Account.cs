@@ -15,6 +15,4 @@ internal class Account
     public IEnumerable<Transaction> SignedTransactions => null!;
 
     public IEnumerable<Block> MinedBlocks => null!;
-
-    public long? LastNonce { get; set; }
 }

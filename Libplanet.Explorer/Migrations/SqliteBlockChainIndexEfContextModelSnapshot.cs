@@ -52,9 +52,6 @@ namespace Libplanet.Explorer.Migrations
                     b.Property<byte[]>("Address")
                         .HasColumnType("binary(20)");
 
-                    b.Property<long?>("LastNonce")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Address");
 
                     b.ToTable("Accounts");
@@ -100,6 +97,9 @@ namespace Libplanet.Explorer.Migrations
                     b.Property<byte[]>("BlockHash")
                         .IsRequired()
                         .HasColumnType("binary(32)");
+
+                    b.Property<long>("Nonce")
+                        .HasColumnType("INTEGER");
 
                     b.Property<byte[]>("SignerAddress")
                         .IsRequired()
