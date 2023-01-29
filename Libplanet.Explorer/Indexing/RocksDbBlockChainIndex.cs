@@ -218,6 +218,18 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                 .Concat(LongToLittleEndianByteArray(tx.Nonce)).ToArray();
             if (_db.Get(signerToTxIdKey) is { })
             {
+                var existingBlockHash =
+                    _db.Get(TxIdToContainedBlockHashPrefix.Concat(txId).ToArray());
+                var existingIndex =
+                    _db.Get(BlockHashToIndexPrefix.Concat(existingBlockHash).ToArray());
+                File.AppendAllText(
+                    "tx-collision-log.txt",
+                    $"{{\"txid\": \"{tx.Id.ToString()}\", "
+                    + $"\"incident_block_index\": {blockDigest.Index}, "
+                    + $"\"incident_blockhash\": \"{blockDigest.Hash.ToString()}\", "
+                    + $"\"existing_block_index\": {existingIndex}, "
+                    + $"\"existing_blockhash\": \"{new BlockHash(existingBlockHash).ToString()}\""
+                    + "},");
                 continue;
             }
 
