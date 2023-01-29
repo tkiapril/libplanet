@@ -197,7 +197,10 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         Logger.Information("Index is out of date. Synchronizing...");
 
-        long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
+        long processedBlockCount = 0,
+            totalBlocksToSync = chainTipIndex - indexTipIndex,
+            intervalBlockCount = 0,
+            intervalTxCount = 0;
         var populateStart = DateTimeOffset.Now;
         var intervalStart = populateStart;
 
@@ -213,31 +216,39 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             }
 
             var blockDigest = store.GetBlockDigest(indexEnumerator.Current)!.Value;
-            RecordBlockImpl(
-                blockDigest,
-                blockDigest.TxIds.Select(
-                    txId => (ITransaction)store.GetTransaction<T>(new TxId(txId.ToArray()))),
-                addBlockContext,
-                stoppingToken);
+            var txs = blockDigest.TxIds.Select(
+                txId => (ITransaction)store.GetTransaction<T>(new TxId(txId.ToArray()))).ToArray();
+            RecordBlockImpl(blockDigest, txs, addBlockContext, stoppingToken);
+            intervalTxCount += txs.Length;
+            ++processedBlockCount;
+            ++intervalBlockCount;
 
-            if (++processedBlockCount % 1000 == 0)
+            var now = DateTimeOffset.Now;
+            var interval = (now - intervalStart).TotalSeconds;
+            if (interval > 10)
             {
-                var now = DateTimeOffset.Now;
                 var totalElapsedSec = (now - populateStart).TotalSeconds;
-                var movingRate = 1000 / (now - intervalStart).TotalSeconds;
+                var currentRate = intervalBlockCount / interval;
                 var totalRate = processedBlockCount / totalElapsedSec;
+                var txRate = intervalTxCount / interval;
                 var elapsedStr = FormatSeconds((int)totalElapsedSec);
                 var eta = FormatSeconds(
                     (int)TimeSpan.FromSeconds(
-                            (chainTipIndex - indexTipIndex - processedBlockCount) / movingRate)
+                            (chainTipIndex - indexTipIndex - processedBlockCount) / currentRate)
                         .TotalSeconds);
 
                 Logger.Information(
-                    $"[{processedBlockCount}/{totalBlocksToSync}] processed" +
-                    $" ({(float)(indexTipIndex + processedBlockCount) / chainTipIndex * 100:F1}%" +
-                    $" synced), moving: {(int)movingRate}blk/s, total: {(int)totalRate}blk/s," +
-                    $" elapsed: {elapsedStr}, eta: {eta}");
+                    $"Height #{blockDigest.Index} of {chainTipIndex},"
+                    + $" {totalBlocksToSync - processedBlockCount} to go"
+                    + $" ({(float)(indexTipIndex + processedBlockCount) / chainTipIndex * 100:F1}%"
+                    + $" synced), session: {processedBlockCount}/{totalBlocksToSync},"
+                    + $" current: {(int)currentRate}blk/s, total: {(int)totalRate}blk/s,"
+                    + $" txrate: {(int)txRate}tx/s,"
+                    + $" tx density: {intervalTxCount / intervalBlockCount}tx/blk,"
+                    + $" elapsed: {elapsedStr}, eta: {eta}");
                 intervalStart = now;
+                intervalBlockCount = 0;
+                intervalTxCount = 0;
             }
         }
 
@@ -314,7 +325,10 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
         Logger.Information("Index is out of date. Synchronizing...");
 
-        long processedBlockCount = 0, totalBlocksToSync = chainTipIndex - indexTipIndex;
+        long processedBlockCount = 0,
+            totalBlocksToSync = chainTipIndex - indexTipIndex,
+            intervalBlockCount = 0,
+            intervalTxCount = 0;
         var populateStart = DateTimeOffset.Now;
         var intervalStart = populateStart;
 
@@ -330,31 +344,39 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
             }
 
             var blockDigest = store.GetBlockDigest(indexEnumerator.Current)!.Value;
-            await RecordBlockAsyncImpl(
-                blockDigest,
-                blockDigest.TxIds.Select(
-                    txId => (ITransaction)store.GetTransaction<T>(new TxId(txId.ToArray()))),
-                addBlockContext,
-                stoppingToken);
+            var txs = blockDigest.TxIds.Select(
+                txId => (ITransaction)store.GetTransaction<T>(new TxId(txId.ToArray()))).ToArray();
+            await RecordBlockAsyncImpl(blockDigest, txs, addBlockContext, stoppingToken);
+            intervalTxCount += txs.Length;
+            ++processedBlockCount;
+            ++intervalBlockCount;
 
-            if (++processedBlockCount % 1000 == 0)
+            var now = DateTimeOffset.Now;
+            var interval = (now - intervalStart).TotalSeconds;
+            if (interval > 10)
             {
-                var now = DateTimeOffset.Now;
                 var totalElapsedSec = (now - populateStart).TotalSeconds;
-                var movingRate = 1000 / (now - intervalStart).TotalSeconds;
+                var currentRate = intervalBlockCount / interval;
                 var totalRate = processedBlockCount / totalElapsedSec;
+                var txRate = intervalTxCount / interval;
                 var elapsedStr = FormatSeconds((int)totalElapsedSec);
                 var eta = FormatSeconds(
                     (int)TimeSpan.FromSeconds(
-                            (chainTipIndex - indexTipIndex - processedBlockCount) / movingRate)
+                            (chainTipIndex - indexTipIndex - processedBlockCount) / currentRate)
                         .TotalSeconds);
 
                 Logger.Information(
-                    $"[{processedBlockCount}/{totalBlocksToSync}] processed" +
-                    $" ({(float)(indexTipIndex + processedBlockCount) / chainTipIndex * 100:F1}%" +
-                    $" synced), moving: {(int)movingRate}blk/s, total: {(int)totalRate}blk/s," +
-                    $" elapsed: {elapsedStr}, eta: {eta}");
+                    $"Height #{blockDigest.Index} of {chainTipIndex},"
+                    + $" {totalBlocksToSync - processedBlockCount} to go"
+                    + $" ({(float)(indexTipIndex + processedBlockCount) / chainTipIndex * 100:F1}%"
+                    + $" synced), session: {processedBlockCount}/{totalBlocksToSync},"
+                    + $" current: {(int)currentRate}blk/s, total: {(int)totalRate}blk/s,"
+                    + $" txrate: {(int)txRate}tx/s,"
+                    + $" tx density: {intervalTxCount / intervalBlockCount}tx/blk,"
+                    + $" elapsed: {elapsedStr}, eta: {eta}");
                 intervalStart = now;
+                intervalBlockCount = 0;
+                intervalTxCount = 0;
             }
         }
 
