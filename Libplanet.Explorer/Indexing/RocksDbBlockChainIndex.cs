@@ -216,10 +216,9 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
             var signerToTxIdKey = SignerToTxIdPrefix
                 .Concat(signerAddress)
                 .Concat(LongToLittleEndianByteArray(tx.Nonce)).ToArray();
-            if (_db.Get(signerToTxIdKey) is { })
+            var txIdToContainedBlockHashKey = TxIdToContainedBlockHashPrefix.Concat(txId).ToArray();
+            if (_db.Get(txIdToContainedBlockHashKey) is { } existingBlockHash)
             {
-                var existingBlockHash =
-                    _db.Get(TxIdToContainedBlockHashPrefix.Concat(txId).ToArray());
                 var existingIndex =
                     _db.Get(BlockHashToIndexPrefix.Concat(existingBlockHash).ToArray());
                 File.AppendAllText(
@@ -227,14 +226,37 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                     $"{{\"txid\": \"{tx.Id.ToString()}\", "
                     + $"\"incident_block_index\": {blockDigest.Index}, "
                     + $"\"incident_blockhash\": \"{blockDigest.Hash.ToString()}\", "
-                    + $"\"existing_block_index\": {existingIndex}, "
+                    + $"\"existing_block_index\": {LittleEndianByteArrayToLong(existingIndex)}, "
                     + $"\"existing_blockhash\": \"{new BlockHash(existingBlockHash).ToString()}\""
                     + "},");
                 continue;
             }
 
+            if (_db.Get(signerToTxIdKey) is { } txIdWithConflictingNonce)
+            {
+                var existingBlockHashNonceConflict =
+                    _db.Get(
+                        TxIdToContainedBlockHashPrefix
+                            .Concat(txIdWithConflictingNonce)
+                            .ToArray());
+                var existingIndex =
+                    _db.Get(BlockHashToIndexPrefix.Concat(existingBlockHashNonceConflict)
+                        .ToArray());
+                File.AppendAllText(
+                    "nonce-collision-log.txt",
+                    $"{{\"incident_txid\": \"{tx.Id.ToString()}\", "
+                    + $"\"incident_block_index\": {blockDigest.Index}, "
+                    + $"\"incident_blockhash\": \"{blockDigest.Hash.ToString()}\", "
+                    + $"\"existing_txid\": {new TxId(txIdWithConflictingNonce).ToString()}, "
+                    + $"\"existing_block_index\": {LittleEndianByteArrayToLong(existingIndex)}, "
+                    + "\"existing_blockhash\":"
+                    + $" \"{new BlockHash(existingBlockHashNonceConflict).ToString()}\""
+                    + "},");
+                continue;
+            }
+
             writeBatch.Put(signerToTxIdKey, txId);
-            writeBatch.Put(TxIdToContainedBlockHashPrefix.Concat(txId).ToArray(), blockHash);
+            writeBatch.Put(txIdToContainedBlockHashKey, blockHash);
             if (tx.SystemAction is { } systemAction)
             {
                 var systemActionTypeIdPrefix = SystemActionTypeIdToTxIdPrefix
