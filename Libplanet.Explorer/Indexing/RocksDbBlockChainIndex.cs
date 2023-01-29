@@ -176,11 +176,23 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
     {
         var minerAddress = blockDigest.Miner.ByteArray.ToArray();
         var blockHash = blockDigest.Hash.ByteArray.ToArray();
+        var indexToBlockHashKey = IndexToBlockHashPrefix
+            .Concat(LongToLittleEndianByteArray(blockDigest.Index)).ToArray();
 
         var writeBatch = new WriteBatch();
-        writeBatch.Put(
-            IndexToBlockHashPrefix.Concat(LongToLittleEndianByteArray(blockDigest.Index)).ToArray(),
-            blockHash);
+        if (_db.Get(indexToBlockHashKey) is { } existingHash)
+        {
+            writeBatch.Dispose();
+            if (new BlockHash(existingHash).Equals(blockDigest.Hash))
+            {
+                return;
+            }
+
+            throw new IndexMismatchException(
+                blockDigest.Index, GetTipImpl()!.Value.Hash, blockDigest.Hash);
+        }
+
+        writeBatch.Put(indexToBlockHashKey, blockHash);
         writeBatch.Put(
             BlockHashToIndexPrefix.Concat(blockHash).ToArray(),
             LongToLittleEndianByteArray(blockDigest.Index));
@@ -201,7 +213,16 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
 
             var signerAddress = tx.Signer.ByteArray.ToArray();
             var txId = tx.Id.ByteArray.ToArray();
+            var signerToTxIdKey = SignerToTxIdPrefix
+                .Concat(signerAddress)
+                .Concat(LongToLittleEndianByteArray(tx.Nonce)).ToArray();
+            if (_db.Get(signerToTxIdKey) is { })
+            {
+                continue;
+            }
 
+            writeBatch.Put(signerToTxIdKey, txId);
+            writeBatch.Put(TxIdToContainedBlockHashPrefix.Concat(txId).ToArray(), blockHash);
             if (tx.SystemAction is { } systemAction)
             {
                 var systemActionTypeIdPrefix = SystemActionTypeIdToTxIdPrefix
@@ -215,13 +236,6 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                     txId,
                     ref systemActionTypeIdOrdinalMemos);
             }
-
-            writeBatch.Put(
-                SignerToTxIdPrefix
-                    .Concat(signerAddress)
-                    .Concat(LongToLittleEndianByteArray(tx.Nonce)).ToArray(),
-                txId);
-            writeBatch.Put(TxIdToContainedBlockHashPrefix.Concat(txId).ToArray(), blockHash);
 
             foreach (var address in tx.UpdatedAddresses.Select(address => address.ByteArray))
             {
