@@ -79,12 +79,11 @@ public class SqliteBlockChainIndex : BlockChainIndexBase
         }
 
         var query = Db.Query("Transactions")
-            .Join("Blocks", "Blocks.Hash", "Transactions.BlockHash")
-            .Select("Transactions.Id")
-            .Where("Transactions.SignerAddress", signer.ByteArray.ToArray());
+            .Select("Id")
+            .Where("SignerAddress", signer.ByteArray.ToArray());
         query = desc
-            ? query.OrderByDesc("Blocks.Index", "Transactions.Id")
-            : query.OrderBy("Blocks.Index", "Transactions.Id");
+            ? query.OrderByDesc("Nonce")
+            : query.OrderBy("Nonce");
         query = limit is { } limitVal ? query.Limit(limitVal) : query;
         query = offset is { } offsetVal ? query.Offset(offsetVal) : query;
         return query.Get<byte[]>()

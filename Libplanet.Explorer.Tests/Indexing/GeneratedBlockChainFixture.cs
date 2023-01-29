@@ -94,6 +94,9 @@ public class GeneratedBlockChainFixture
             SignedTxs = transactions.Aggregate(
                 SignedTxs,
                 (dict, tx) => dict.SetItem(tx.Signer, dict[tx.Signer].Add(tx)));
+            SignedTxs = PrivateKeys.Aggregate(
+                SignedTxs,
+                (dict, pk) => dict.SetItem(pk.ToAddress(), dict[pk.ToAddress()].OrderBy(tx => tx.Nonce).ToImmutableArray()));
             InvolvedTxs = transactions.Aggregate(
                 InvolvedTxs,
                 (dict, tx) => tx.UpdatedAddresses.Aggregate(
