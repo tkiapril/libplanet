@@ -61,7 +61,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         EnsureReady();
         return _db.Get(
             BlockHashToIndexPrefix.Concat(hash.ByteArray).ToArray()) is { } arr
-            ? LittleEndianByteArrayToLong(arr)
+            ? BigEndianByteArrayToLong(arr)
             : throw new IndexOutOfRangeException(
                 $"The hash {hash} does not exist in the index.");
     }
@@ -99,7 +99,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         EnsureReady();
         using var iter = IteratePrefix(
                 0, 1, true, SignerToTxIdPrefix.Concat(address.ByteArray).ToArray())
-            .Select(kv => LittleEndianByteArrayToLong(kv.Key)).GetEnumerator();
+            .Select(kv => BigEndianByteArrayToLong(kv.Key)).GetEnumerator();
         return iter.MoveNext()
             ? iter.Current
             : null;
@@ -136,7 +136,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
     {
         return _db.Get(
             IndexToBlockHashPrefix.Concat(
-                LongToLittleEndianByteArray(
+                LongToBigEndianByteArray(
                     index >= 0 ? index : (GetTipImpl()?.Index ?? 0) + index + 1)).ToArray())
             is { } arr
             ? new BlockHash(arr)
@@ -159,12 +159,12 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                     MinerToBlockIndexPrefix.Concat(minerVal.ByteArray).ToArray())
                 .Select(
                     kv => (
-                        LittleEndianByteArrayToLong(kv.Value[..8]),
+                        BigEndianByteArrayToLong(kv.Value[..8]),
                         new BlockHash(kv.Value[8..40])));
         }
 
         return IteratePrefix(offset, limit, desc, IndexToBlockHashPrefix)
-            .Select(kv => (LittleEndianByteArrayToLong(kv.Key), new BlockHash(kv.Value)));
+            .Select(kv => (BigEndianByteArrayToLong(kv.Key), new BlockHash(kv.Value)));
     }
 
     /// <inheritdoc />
@@ -177,7 +177,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         var minerAddress = blockDigest.Miner.ByteArray.ToArray();
         var blockHash = blockDigest.Hash.ByteArray.ToArray();
         var indexToBlockHashKey = IndexToBlockHashPrefix
-            .Concat(LongToLittleEndianByteArray(blockDigest.Index)).ToArray();
+            .Concat(LongToBigEndianByteArray(blockDigest.Index)).ToArray();
 
         var writeBatch = new WriteBatch();
         if (_db.Get(indexToBlockHashKey) is { } existingHash)
@@ -195,10 +195,10 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         writeBatch.Put(indexToBlockHashKey, blockHash);
         writeBatch.Put(
             BlockHashToIndexPrefix.Concat(blockHash).ToArray(),
-            LongToLittleEndianByteArray(blockDigest.Index));
+            LongToBigEndianByteArray(blockDigest.Index));
         writeBatch.Put(
             GetNextOrdinalKey(MinerToBlockIndexPrefix.Concat(minerAddress).ToArray()),
-            LongToLittleEndianByteArray(blockDigest.Index).Concat(blockHash).ToArray());
+            LongToBigEndianByteArray(blockDigest.Index).Concat(blockHash).ToArray());
 
         var systemActionTypeIdOrdinalMemos = ImmutableDictionary<string, long>.Empty;
         var involvedAddressOrdinalMemos = ImmutableDictionary<string, long>.Empty;
@@ -215,7 +215,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
             var txId = tx.Id.ByteArray.ToArray();
             var signerToTxIdKey = SignerToTxIdPrefix
                 .Concat(signerAddress)
-                .Concat(LongToLittleEndianByteArray(tx.Nonce)).ToArray();
+                .Concat(LongToBigEndianByteArray(tx.Nonce)).ToArray();
             var txIdToContainedBlockHashKey = TxIdToContainedBlockHashPrefix.Concat(txId).ToArray();
             if (_db.Get(txIdToContainedBlockHashKey) is { } existingBlockHash)
             {
@@ -226,7 +226,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                     $"{{\"txid\": \"{tx.Id.ToString()}\", "
                     + $"\"incident_block_index\": {blockDigest.Index}, "
                     + $"\"incident_blockhash\": \"{blockDigest.Hash.ToString()}\", "
-                    + $"\"existing_block_index\": {LittleEndianByteArrayToLong(existingIndex)}, "
+                    + $"\"existing_block_index\": {BigEndianByteArrayToLong(existingIndex)}, "
                     + $"\"existing_blockhash\": \"{new BlockHash(existingBlockHash).ToString()}\""
                     + "},");
                 continue;
@@ -248,7 +248,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                     + $"\"incident_block_index\": {blockDigest.Index}, "
                     + $"\"incident_blockhash\": \"{blockDigest.Hash.ToString()}\", "
                     + $"\"existing_txid\": {new TxId(txIdWithConflictingNonce).ToString()}, "
-                    + $"\"existing_block_index\": {LittleEndianByteArrayToLong(existingIndex)}, "
+                    + $"\"existing_block_index\": {BigEndianByteArrayToLong(existingIndex)}, "
                     + "\"existing_blockhash\":"
                     + $" \"{new BlockHash(existingBlockHashNonceConflict).ToString()}\""
                     + "},");
@@ -261,7 +261,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
             {
                 var systemActionTypeIdPrefix = SystemActionTypeIdToTxIdPrefix
                     .Concat(
-                        ShortToLittleEndianByteArray(
+                        ShortToBigEndianByteArray(
                             (short)systemAction.GetValue<Integer>("type_id")))
                     .ToArray();
                 PutOrdinalWithMemo(
@@ -341,10 +341,11 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         }
     }
 
-    private static byte[] ShortToLittleEndianByteArray(short val)
+    // Use big endian for easier iterator prev seek
+    private static byte[] ShortToBigEndianByteArray(short val)
     {
         byte[] arr = BitConverter.GetBytes(val);
-        if (!BitConverter.IsLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Array.Reverse(arr);
         }
@@ -352,10 +353,10 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         return arr;
     }
 
-    private static byte[] LongToLittleEndianByteArray(long val)
+    private static byte[] LongToBigEndianByteArray(long val)
     {
         byte[] arr = BitConverter.GetBytes(val);
-        if (!BitConverter.IsLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Array.Reverse(arr);
         }
@@ -363,7 +364,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         return arr;
     }
 
-    private static long LittleEndianByteArrayToLong(byte[] val)
+    private static long BigEndianByteArrayToLong(byte[] val)
     {
         var len = val.Length;
         if (len != 8)
@@ -373,7 +374,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                 nameof(val));
         }
 
-        if (!BitConverter.IsLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Array.Reverse(val);
         }
@@ -446,7 +447,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         byte[] upper = new byte[iter.Key().Length - prefix.Length];
         Array.Fill(upper, byte.MaxValue);
         using Iterator lastIter = _db.NewIterator().SeekForPrev(prefix.Concat(upper).ToArray());
-        return LittleEndianByteArrayToLong(lastIter.Key()[prefix.Length..]) + 1;
+        return BigEndianByteArrayToLong(lastIter.Key()[prefix.Length..]) + 1;
     }
 
     private byte[] GetNextOrdinalKey(byte[] prefix)
@@ -457,7 +458,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
 
     private byte[] GetNextOrdinalKey(byte[] prefix, ref long? memo) =>
         prefix.Concat(
-            LongToLittleEndianByteArray(
+            LongToBigEndianByteArray(
                 (long)(memo = memo is { } memoVal
                     ? ++memoVal
                     : (memo = GetNextOrdinal(prefix)).Value))).ToArray();
