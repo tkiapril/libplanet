@@ -94,6 +94,16 @@ namespace Libplanet.Explorer.Cocona.Commands
                 return new RocksDbBlockChainIndex(uri.LocalPath);
             }
 
+            if (protocol is "dumb" && transport is "file")
+            {
+                return new DumbFileBlockChainIndex(uri.LocalPath);
+            }
+
+            if (protocol is "noop")
+            {
+                return new NoOpBlockChainIndex();
+            }
+
             throw new ArgumentException(
                 $"The index URI scheme {uri.Scheme}:// is not supported.",
                 nameof(uriString)
