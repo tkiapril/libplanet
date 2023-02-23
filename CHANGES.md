@@ -6,6 +6,11 @@ Version 0.50.0
 
 To be released.
 
+Since 0.50.0, we officially provide *[@planetarium/account]*, an npm package for
+providing measures to represent accounts for apps developed with Libplanet in
+JavaScript/TypeScript.  Note that the feature set is being actively developed,
+and the specification might change in the near future.
+
 ### Deprecated APIs
 
 ### Backward-incompatible API changes
@@ -52,6 +57,7 @@ To be released.
 ### Bug fixes
 
 ### Dependencies
+ -  Added *[@planetarium/account]* npm package.  [[#2848]]
 
 ### CLI tools
 
@@ -69,6 +75,9 @@ Released on February 24, 2023.
 
 [#2849]: https://github.com/planetarium/libplanet/pull/2849
 
+
+[#2848]: https://github.com/planetarium/libplanet/pull/2848
+[@planetarium/account]: https://www.npmjs.com/package/@planetarium/account
 
 Version 0.49.0
 --------------
