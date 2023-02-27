@@ -50,6 +50,8 @@ and the specification might change in the near future.
  -  Changed `BlockPolicy<T>()` constructor not to take
     `Func<long, int>` type parameter named `getMinBlockProtocolVersion`.
     [[#2872]]
+ -  (Libplanet.Explorer) Added `Index` field to `IBlockChainContext` interface.
+    [[#2613]]
 
 ### Backward-incompatible network protocol changes
 
@@ -107,6 +109,18 @@ and the specification might change in the near future.
  -  Added `PolymorphicAction<T>.ActionTypeLoader` static property to provide
     a way to configure action type loader to be used in `PolymorphicAction<T>`.
     [[#2873]]
+ -  (Libplanet.Explorer) Added several interfaces and classes that pertain to
+    blockchain indexing.  [[#2613]]
+     -  Added `IBlockChainIndex` interface.
+     -  Added `IIndexingContext` interface.
+     -  Added `BlockChainIndexBase` abstract class.
+     -  Added `RocksDbBlockChainIndex` class.
+     -  Added `RocksDbIndexingContext` class.
+     -  Added `IndexingService` class.
+     -  Added `IndexMismatchException` class.
+ -  (Libplanet.Explorer.Cocona) New project was added to provide Cocona
+    commands related to *Libplanet.Explorer* project.  [[#2613]]
+     -  Added `IndexCommand` Cocona command class.
 
 ### Behavioral changes
 
@@ -119,6 +133,15 @@ and the specification might change in the near future.
  -  `BlockChain<T>.Append()` method became to throw
     `InvalidBlockCommitException` when the given `BlockCommit` is invalid with
     given block.  [[#2872]]
+ -  (Libplanet.Explorer) GraphQL queries can now benefit from the improved
+    lookup performance with an optional `IBlockChainIndex` instance in the
+    passed context. Applications willing to take advantage of the index should
+    provide an instance of `IBlockChainIndex` to the `IBlockChainContext`
+    implementation and add the `IndexingService` hosted service to sync the
+    index in the background. Note that the synchronization may take a long time
+    if you have a lot of blocks (over 24 hours for ~5M blocks), so this feature
+    is not currently intended for already long-running production networks.
+    [[#2613]]
 
 ### Bug fixes
 
@@ -126,10 +149,17 @@ and the specification might change in the near future.
     correctly in some situations.  [[#2872]]
 
 ### Dependencies
+
  -  Added *[@planetarium/account]* npm package.  [[#2848]]
 
 ### CLI tools
 
+ -  (Libplanet.Explorer.Executable) Project is now deprecated. It is currently
+    nonfunctional.  [[#2243], [#2588]]
+
+[#2243]: https://github.com/planetarium/libplanet/discussions/2243
+[#2588]: https://github.com/planetarium/libplanet/discussions/2588
+[#2613]: https://github.com/planetarium/libplanet/pull/2613
 [#2848]: https://github.com/planetarium/libplanet/pull/2848
 [#2872]: https://github.com/planetarium/libplanet/pull/2872
 [#2873]: https://github.com/planetarium/libplanet/pull/2873
