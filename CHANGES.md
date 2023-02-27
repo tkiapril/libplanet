@@ -15,6 +15,18 @@ and the specification might change in the near future.
 
 ### Backward-incompatible API changes
 
+ -  (Libplanet.Explorer) Added `Index` field to `IBlockChainContext` interface.
+    [[#2613]]
+ -  (Libplanet.Explorer) GraphQL queries can now benefit from the improved
+    lookup performance with an optional `IBlockChainIndex` instance in the
+    passed context. Applications willing to take advantage of the index should
+    provide an instance of `IBlockChainIndex` to the `IBlockChainContext`
+    implementation and add the `IndexingService` hosted service to sync the
+    index in the background. Note that the synchronization may take a long time
+    if you have a lot of blocks (over 24 hours for ~5M blocks), so this feature
+    is not currently intended for already long-running production networks.
+    [[#2613]]
+
 ### Backward-incompatible network protocol changes
 
 ### Backward-incompatible storage format changes
@@ -24,16 +36,36 @@ and the specification might change in the near future.
  -  Added `PolymorphicAction<T>.ActionTypeLoader` static property to provide
     a way to configure action type loader to be used in `PolymorphicAction<T>`.
     [[#2873]]
+ -  (Libplanet.Explorer) Added several interfaces and classes that pertain to
+    blockchain indexing.  [[#2613]]
+     -  Added `IBlockChainIndex` interface.
+     -  Added `IIndexingContext` interface.
+     -  Added `BlockChainIndexBase` abstract class.
+     -  Added `RocksDbBlockChainIndex` class.
+     -  Added `RocksDbIndexingContext` class.
+     -  Added `IndexingService` class.
+     -  Added `QueryFactoryExtensions` static class.
+     -  Added `IndexMismatchException` class.
+ -  (Libplanet.Explorer.Cocona) New project was added to provide Cocona
+    commands related to *Libplanet.Explorer* project.  [[#2613]]
+     -  Added `IndexCommand` Cocona command class.
 
 ### Behavioral changes
 
 ### Bug fixes
 
 ### Dependencies
+
  -  Added *[@planetarium/account]* npm package.  [[#2848]]
 
 ### CLI tools
 
+ -  (Libplanet.Explorer.Executable) Project is now deprecated. It is currently
+    nonfunctional.  [[#2243], [#2588]]
+
+[#2243]: https://github.com/planetarium/libplanet/discussions/2243
+[#2588]: https://github.com/planetarium/libplanet/discussions/2588
+[#2613]: https://github.com/planetarium/libplanet/pull/2613
 [#2848]: https://github.com/planetarium/libplanet/pull/2848
 [#2873]: https://github.com/planetarium/libplanet/pull/2873
 [@planetarium/account]: https://www.npmjs.com/package/@planetarium/account
@@ -80,6 +112,8 @@ Released on February 27, 2023.
 ### Behavioral changes
 
  -  `IBlockPolicy` is no longer enforced for genesis `Block<T>`s.  [[#2845]]
+ -  (Libplanet.Explorer) Queries that can benefit from indexes now uses
+    `IBlockChainIndex` for indexing.  [[#2613]]
 
 [#2772]: https://github.com/planetarium/libplanet/issues/2772
 [#2831]: https://github.com/planetarium/libplanet/pull/2831
