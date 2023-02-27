@@ -19,17 +19,16 @@ namespace Libplanet.Explorer.Indexing;
 /// </summary>
 public class RocksDbBlockChainIndex : BlockChainIndexBase
 {
-    private static readonly byte[] BlockHashToIndexPrefix = { (byte)'b' };
-    private static readonly byte[] IndexToBlockHashPrefix = { (byte)'i' };
-    private static readonly byte[] MinerToBlockIndexPrefix = { (byte)'m' };
-    private static readonly byte[] SignerToTxIdPrefix = { (byte)'s' };
-    private static readonly byte[] InvolvedAddressToTxIdPrefix = { (byte)'I' };
-    private static readonly byte[] TxIdToContainedBlockHashPrefix = { (byte)'t' };
-    private static readonly byte[] SystemActionTypeIdToTxIdPrefix = { (byte)'S' };
-    private static readonly byte[] CustomActionTypeIdToTxIdPrefix = { (byte)'C' };
-    private static readonly byte[] CustomActionTypeIdPrefix = { (byte)'c' };
     private static readonly Codec Codec = new Codec();
-    private readonly RocksDb _db;
+    private readonly WrappedRocksDb _blockHashToIndexDb;
+    private readonly WrappedRocksDb _blockIndexToHashDb;
+    private readonly WrappedRocksDb _minerToBlockIndexDb;
+    private readonly WrappedRocksDb _signerToTxIdDb;
+    private readonly WrappedRocksDb _involvedAddressToTxIdDb;
+    private readonly WrappedRocksDb _txIdToContainedBlockHashDb;
+    private readonly WrappedRocksDb _systemActionTypeIdToTxIdDb;
+    private readonly WrappedRocksDb _customActionTypeIdToTxIdDb;
+    private readonly WrappedRocksDb _customActionTypeIdDb;
 
     /// <summary>
     /// Create an instance of <see cref="IBlockChainIndex"/> that uses RocksDB as the backend.
@@ -52,15 +51,31 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         var rocksDbOption = new DbOptions()
             .SetCreateIfMissing();
 
-        _db = RocksDb.Open(rocksDbOption, path);
+        _blockHashToIndexDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "blockHashToIndex"));
+        _blockIndexToHashDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "blockIndexToHash"));
+        _minerToBlockIndexDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "minerToBlockIndex"));
+        _signerToTxIdDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "signerToTxId"));
+        _involvedAddressToTxIdDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "involvedAddressToTxId"));
+        _txIdToContainedBlockHashDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "txIdToContainedBlockHash"));
+        _systemActionTypeIdToTxIdDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "systemActionTypeIdToTxId"));
+        _customActionTypeIdToTxIdDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "customActionTypeIdToTxId"));
+        _customActionTypeIdDb =
+            new WrappedRocksDb(rocksDbOption, Path.Combine(path, "customActionTypeId"));
     }
 
     /// <inheritdoc />
     public override long BlockHashToIndex(BlockHash hash)
     {
         EnsureReady();
-        return _db.Get(
-            BlockHashToIndexPrefix.Concat(hash.ByteArray).ToArray()) is { } arr
+        return _blockHashToIndexDb.Get(hash.ByteArray) is { } arr
             ? BigEndianByteArrayToLong(arr)
             : throw new IndexOutOfRangeException(
                 $"The hash {hash} does not exist in the index.");
@@ -75,8 +90,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         GetSignedTxIdsByAddress(Address signer, int? offset, int? limit, bool desc)
     {
         EnsureReady();
-        return IteratePrefix(
-                offset, limit, desc, SignerToTxIdPrefix.Concat(signer.ByteArray).ToArray())
+        return _signerToTxIdDb.IteratePrefix(offset, limit, desc, signer.ByteArray.ToArray())
             .Select(kv => new TxId(kv.Value));
     }
 
@@ -85,11 +99,8 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         GetInvolvedTxIdsByAddress(Address address, int? offset, int? limit, bool desc)
     {
         EnsureReady();
-        return IteratePrefix(
-                offset,
-                limit,
-                desc,
-                InvolvedAddressToTxIdPrefix.Concat(address.ByteArray).ToArray())
+        return _involvedAddressToTxIdDb.IteratePrefix(
+                offset, limit, desc, address.ByteArray.ToArray())
             .Select(kv => new TxId(kv.Value));
     }
 
@@ -97,8 +108,8 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
     public override long? GetLastNonceByAddress(Address address)
     {
         EnsureReady();
-        using var iter = IteratePrefix(
-                0, 1, true, SignerToTxIdPrefix.Concat(address.ByteArray).ToArray())
+        using var iter = _signerToTxIdDb.IteratePrefix(
+                0, 1, true, address.ByteArray.ToArray())
             .Select(kv => BigEndianByteArrayToLong(kv.Key)).GetEnumerator();
         return iter.MoveNext()
             ? iter.Current
@@ -110,9 +121,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
     {
         EnsureReady();
         containedBlock = default;
-        var bytes =
-            _db.Get(TxIdToContainedBlockHashPrefix.Concat(txId.ByteArray).ToArray());
-        if (bytes is not { })
+        if (_txIdToContainedBlockHashDb.Get(txId.ByteArray.ToArray()) is not { } bytes)
         {
             return false;
         }
@@ -134,10 +143,9 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
 
     protected override BlockHash IndexToBlockHashImpl(long index)
     {
-        return _db.Get(
-            IndexToBlockHashPrefix.Concat(
+        return _blockIndexToHashDb.Get(
                 LongToBigEndianByteArray(
-                    index >= 0 ? index : (GetTipImpl()?.Index ?? 0) + index + 1)).ToArray())
+                    index >= 0 ? index : (GetTipImpl()?.Index ?? 0) + index + 1))
             is { } arr
             ? new BlockHash(arr)
             : throw new IndexOutOfRangeException(
@@ -152,18 +160,15 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
     {
         if (miner is { } minerVal)
         {
-            return IteratePrefix(
-                    offset,
-                    limit,
-                    desc,
-                    MinerToBlockIndexPrefix.Concat(minerVal.ByteArray).ToArray())
+            return _minerToBlockIndexDb.IteratePrefix(
+                    offset, limit, desc, minerVal.ByteArray.ToArray())
                 .Select(
                     kv => (
                         BigEndianByteArrayToLong(kv.Value[..8]),
                         new BlockHash(kv.Value[8..40])));
         }
 
-        return IteratePrefix(offset, limit, desc, IndexToBlockHashPrefix)
+        return _blockIndexToHashDb.IteratePrefix(offset, limit, desc, Array.Empty<byte>())
             .Select(kv => (BigEndianByteArrayToLong(kv.Key), new BlockHash(kv.Value)));
     }
 
@@ -179,7 +184,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         var indexToBlockHashKey = IndexToBlockHashPrefix
             .Concat(LongToBigEndianByteArray(blockDigest.Index)).ToArray();
 
-        var writeBatch = new WriteBatch();
+        var writeBatch = new WrappedWriteBatch(this);
         if (_db.Get(indexToBlockHashKey) is { } existingHash)
         {
             writeBatch.Dispose();
@@ -372,103 +377,131 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         return BitConverter.ToInt64(val);
     }
 
-    private IEnumerable<(byte[] Key, byte[] Value)>
-        IteratePrefix(int? offset, int? limit, bool desc, byte[] prefix)
+    private class WrappedRocksDb
     {
-        if (limit == 0)
+        private readonly RocksDb _db;
+
+        public WrappedRocksDb(OptionsHandle options, string path)
         {
-            yield break;
+            if (path is null)
+            {
+                throw new ArgumentNullException(nameof(path));
+            }
+
+            path = Path.GetFullPath(path);
+
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+
+            _db = RocksDb.Open(options, path);
         }
 
-        Iterator iter = _db.NewIterator().Seek(prefix);
-        if (!iter.Valid() || !iter.Key().StartsWith(prefix))
-        {
-            yield break;
-        }
+        public byte[] Get(byte[] key) => _db.Get(key);
 
-        if (desc)
-        {
-            byte[] upper = new byte[iter.Key().Length - prefix.Length];
-            Array.Fill(upper, byte.MaxValue);
-            iter.Dispose();
-            iter = _db.NewIterator().SeekForPrev(prefix.Concat(upper).ToArray());
-        }
+        public byte[] Get(ImmutableArray<byte> key) => Get(key.ToArray());
 
-        byte[] key;
-        Func<long> GetAdvancer()
+        public void Write(WriteBatch writeBatch, WriteOptions writeOptions) =>
+            _db.Write(writeBatch, writeOptions);
+
+        public IEnumerable<(byte[] Key, byte[] Value)>
+            IteratePrefix(int? offset, int? limit, bool desc, byte[] prefix)
         {
-            long count = 0;
-            System.Action advance = desc
-                ? () => iter.Prev()
-                : () => iter.Next();
-            return () =>
+            if (limit == 0)
+            {
+                yield break;
+            }
+
+            Iterator iter = _db.NewIterator().Seek(prefix);
+            if (!iter.Valid() || !iter.Key().StartsWith(prefix))
+            {
+                yield break;
+            }
+
+            if (desc)
+            {
+                byte[] upper = new byte[iter.Key().Length - prefix.Length];
+                Array.Fill(upper, byte.MaxValue);
+                iter.Dispose();
+                iter = _db.NewIterator().SeekForPrev(prefix.Concat(upper).ToArray());
+            }
+
+            byte[] key;
+            System.Action advance = desc ? () => iter.Prev() : () => iter.Next();
+
+            for (var i = 0; i < offset; ++i)
             {
                 advance();
-                return ++count;
-            };
+            }
+
+            for (long count = 0L;
+                 iter.Valid()
+                 && (key = iter.Key()).StartsWith(prefix)
+                 && (limit is not { } || count < (offset ?? 0) + limit);
+                 ++count)
+            {
+                yield return (key[prefix.Length..], iter.Value());
+            }
+
+            iter.Dispose();
         }
 
-        var advance = GetAdvancer();
-        for (var i = 0; i < offset; ++i)
+        public byte[] GetNextOrdinalKey(byte[] prefix)
         {
-            advance();
+            long? memo = null;
+            return GetNextOrdinalKey(prefix, ref memo);
         }
 
-        for (long count = 0L;
-             iter.Valid()
-             && (key = iter.Key()).StartsWith(prefix)
-             && (limit is not { } || count < (offset ?? 0) + limit);
-             count = advance())
+        public byte[] GetNextOrdinalKey(byte[] prefix, ref long? memo) =>
+            prefix.Concat(
+                LongToBigEndianByteArray(
+                    (long)(memo = memo is { } memoVal
+                        ? ++memoVal
+                        : (memo = GetNextOrdinal(prefix)).Value))).ToArray();
+
+        private long GetNextOrdinal(byte[] prefix)
         {
-            yield return (key[prefix.Length..], iter.Value());
-        }
+            using Iterator iter = _db.NewIterator().Seek(prefix);
+            if (!iter.Valid() || !iter.Key().StartsWith(prefix))
+            {
+                return 0L;
+            }
 
-        iter.Dispose();
+            byte[] upper = new byte[iter.Key().Length];
+            Array.Fill(upper, byte.MaxValue);
+            using Iterator lastIter = _db.NewIterator().SeekForPrev(prefix.Concat(upper).ToArray());
+            return BigEndianByteArrayToLong(lastIter.Key()[prefix.Length..]) + 1;
+        }
     }
 
-    private long GetNextOrdinal(byte[] prefix)
+    private class WrappedWriteBatch
     {
-        using Iterator iter = _db.NewIterator().Seek(prefix);
-        if (!iter.Valid() || !iter.Key().StartsWith(prefix))
+        private readonly WriteBatch _writeBatch;
+        private readonly WrappedRocksDb _db;
+
+        public WrappedWriteBatch(WrappedRocksDb db)
         {
-            return 0L;
+            _db = db;
+            _writeBatch = new WriteBatch();
         }
 
-        byte[] upper = new byte[iter.Key().Length - prefix.Length];
-        Array.Fill(upper, byte.MaxValue);
-        using Iterator lastIter = _db.NewIterator().SeekForPrev(prefix.Concat(upper).ToArray());
-        return BigEndianByteArrayToLong(lastIter.Key()[prefix.Length..]) + 1;
-    }
-
-    private byte[] GetNextOrdinalKey(byte[] prefix)
-    {
-        long? memo = null;
-        return GetNextOrdinalKey(prefix, ref memo);
-    }
-
-    private byte[] GetNextOrdinalKey(byte[] prefix, ref long? memo) =>
-        prefix.Concat(
-            LongToBigEndianByteArray(
-                (long)(memo = memo is { } memoVal
-                    ? ++memoVal
-                    : (memo = GetNextOrdinal(prefix)).Value))).ToArray();
-
-    private void PutOrdinalWithMemo(
-        ref WriteBatch writeBatch,
-        byte[] prefix,
-        byte[] value,
-        ref ImmutableDictionary<string, long> memos)
-    {
-        long? memo = memos.TryGetValue(
-            Convert.ToBase64String(prefix),
-            out var memoValue)
-            ? memoValue
-            : null;
-        writeBatch.Put(
-            GetNextOrdinalKey(prefix, ref memo),
-            value);
-        memos = memos.SetItem(
-            Convert.ToBase64String(prefix),
-            memo!.Value);
+        public void PutOrdinalWithMemo(
+            byte[] prefix,
+            byte[] value,
+            ref ImmutableDictionary<string, long> memos)
+        {
+            long? memo = memos.TryGetValue(
+                Convert.ToBase64String(prefix),
+                out var memoValue)
+                ? memoValue
+                : null;
+            _writeBatch.Put(
+                _db.GetNextOrdinalKey(prefix, ref memo),
+                value);
+            memos = memos.SetItem(
+                Convert.ToBase64String(prefix),
+                memo!.Value);
+        }
     }
 }
