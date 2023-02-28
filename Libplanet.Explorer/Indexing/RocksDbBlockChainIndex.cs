@@ -244,6 +244,10 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
             ImmutableDictionary<byte[], long>.Empty.WithComparers(ByteArrayComparer.Instance);
         var encounteredSignerToTxIdKeys =
             ImmutableHashSet<byte[]>.Empty.WithComparer(ByteArrayComparer.Instance);
+        var encounteredSignerToTxIdKeyMetadata =
+            ImmutableDictionary<byte[], (TxId TxId, BlockHash Hash, long Index)>
+                .Empty
+                .WithComparers(ByteArrayComparer.Instance);
         foreach (var tx in txs)
         {
             if (stoppingToken?.IsCancellationRequested ?? false)
@@ -263,12 +267,32 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                 continue;
             }
 
-            if (
-                !encounteredSignerToTxIdKeys.Contains(signerToTxIdKey)
-                && _db.Get(signerToTxIdKey) is null)
+            (TxId TxId, BlockHash Hash, long Index)? conflictingNonceMetadata = null;
+            if (encounteredSignerToTxIdKeys.Contains(signerToTxIdKey))
+            {
+                conflictingNonceMetadata = encounteredSignerToTxIdKeyMetadata[signerToTxIdKey];
+            }
+            else if (_db.Get(signerToTxIdKey) is { } txIdWithConflictingNonce)
+            {
+                var existingBlockHashNonceConflict = _db.Get(
+                    TxIdToContainedBlockHashPrefix
+                        .Concat(txIdWithConflictingNonce)
+                        .ToArray());
+                conflictingNonceMetadata = (
+                    new TxId(txIdWithConflictingNonce),
+                    new BlockHash(existingBlockHashNonceConflict),
+                    BigEndianByteArrayToLong(
+                        _db.Get(BlockHashToIndexPrefix.Concat(existingBlockHashNonceConflict)
+                            .ToArray())));
+            }
+
+            if (conflictingNonceMetadata is not { } metadataValue)
             {
                 writeBatch.Put(signerToTxIdKey, txId);
                 encounteredSignerToTxIdKeys = encounteredSignerToTxIdKeys.Add(signerToTxIdKey);
+                encounteredSignerToTxIdKeyMetadata = encounteredSignerToTxIdKeyMetadata.Add(
+                    signerToTxIdKey,
+                    (tx.Id, blockDigest.Hash, blockDigest.Index));
             }
             else
             {
@@ -277,6 +301,16 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
                     signerToTxIdKey,
                     txId,
                     ref duplicateAccountNonceOrdinalMemos);
+                File.AppendAllText(
+                    "nonce-collision-log.txt",
+                    $"{{\"incident_txid\": \"{tx.Id.ToString()}\", "
+                    + $"\"incident_block_index\": {blockDigest.Index}, "
+                    + $"\"incident_blockhash\": \"{blockDigest.Hash.ToString()}\", "
+                    + $"\"existing_txid\": {metadataValue.TxId.ToString()}, "
+                    + $"\"existing_block_index\": {metadataValue.Index}, "
+                    + "\"existing_blockhash\":"
+                    + $" \"{metadataValue.Hash.ToString()}\""
+                    + "},");
             }
 
             writeBatch.Put(txIdToContainedBlockHashKey, blockHash);
