@@ -202,71 +202,7 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
         => await Task.Run(GetTipImpl).ConfigureAwait(false);
 
     /// <inheritdoc />
-    protected override async Task IndexAsyncImpl(
-        BlockDigest blockDigest,
-        IEnumerable<ITransaction> txs,
-        IIndexingContext? context,
-        CancellationToken stoppingToken) =>
-        await Task.Run(() => IndexImpl(blockDigest, txs, context, stoppingToken), stoppingToken)
-            .ConfigureAwait(false);
-
-    protected override IIndexingContext GetIndexingContext() =>
-        new RocksDbIndexingContext();
-
-    protected override void CommitIndexingContext(IIndexingContext context)
-    {
-        if (context is not RocksDbIndexingContext)
-        {
-            throw new ArgumentException(
-                $"Received an unsupported {nameof(IIndexingContext)}: {context.GetType()}");
-        }
-    }
-
-    protected override async Task CommitIndexingContextAsync(IIndexingContext context) =>
-        await Task.Run(() => CommitIndexingContext(context));
-
-    // Use big endian for easier iterator prev seek
-    private static byte[] ShortToBigEndianByteArray(short val)
-    {
-        byte[] arr = BitConverter.GetBytes(val);
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(arr);
-        }
-
-        return arr;
-    }
-
-    private static byte[] LongToBigEndianByteArray(long val)
-    {
-        byte[] arr = BitConverter.GetBytes(val);
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(arr);
-        }
-
-        return arr;
-    }
-
-    private static long BigEndianByteArrayToLong(byte[] val)
-    {
-        var len = val.Length;
-        if (len != 8)
-        {
-            throw new ArgumentException(
-                $"a byte array of size 8 must be provided, but the size of given array was {len}.",
-                nameof(val));
-        }
-
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(val);
-        }
-
-        return BitConverter.ToInt64(val);
-    }
-
-    private void IndexImpl(
+    protected override void IndexImpl(
         BlockDigest blockDigest,
         IEnumerable<ITransaction> txs,
         IIndexingContext? context,
@@ -406,6 +342,71 @@ public class RocksDbBlockChainIndex : BlockChainIndexBase
 
         _db.Write(writeBatch);
         writeBatch.Dispose();
+    }
+
+    /// <inheritdoc />
+    protected override async Task IndexAsyncImpl(
+        BlockDigest blockDigest,
+        IEnumerable<ITransaction> txs,
+        IIndexingContext? context,
+        CancellationToken stoppingToken) =>
+        await Task.Run(() => IndexImpl(blockDigest, txs, context, stoppingToken), stoppingToken)
+            .ConfigureAwait(false);
+
+    protected override IIndexingContext GetIndexingContext() =>
+        new RocksDbIndexingContext();
+
+    protected override void CommitIndexingContext(IIndexingContext context)
+    {
+        if (context is not RocksDbIndexingContext)
+        {
+            throw new ArgumentException(
+                $"Received an unsupported {nameof(IIndexingContext)}: {context.GetType()}");
+        }
+    }
+
+    protected override async Task CommitIndexingContextAsync(IIndexingContext context) =>
+        await Task.Run(() => CommitIndexingContext(context));
+
+    // Use big endian for easier iterator prev seek
+    private static byte[] ShortToBigEndianByteArray(short val)
+    {
+        byte[] arr = BitConverter.GetBytes(val);
+        if (BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(arr);
+        }
+
+        return arr;
+    }
+
+    private static byte[] LongToBigEndianByteArray(long val)
+    {
+        byte[] arr = BitConverter.GetBytes(val);
+        if (BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(arr);
+        }
+
+        return arr;
+    }
+
+    private static long BigEndianByteArrayToLong(byte[] val)
+    {
+        var len = val.Length;
+        if (len != 8)
+        {
+            throw new ArgumentException(
+                $"a byte array of size 8 must be provided, but the size of given array was {len}.",
+                nameof(val));
+        }
+
+        if (BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(val);
+        }
+
+        return BitConverter.ToInt64(val);
     }
 
     private IEnumerable<(byte[] Key, byte[] Value)>

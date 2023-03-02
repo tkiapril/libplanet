@@ -122,6 +122,11 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
     public abstract Task<BlockHash?> TryGetContainedBlockHashByIdAsync(TxId txId);
 
     /// <inheritdoc />
+    void IBlockChainIndex.Index(
+        BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken stoppingToken) =>
+        IndexImpl(blockDigest, txs, null, stoppingToken);
+
+    /// <inheritdoc />
     async Task IBlockChainIndex.IndexAsync(
         BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken stoppingToken) =>
         await IndexAsyncImpl(blockDigest, txs, null, stoppingToken);
@@ -270,6 +275,12 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
 
     protected abstract Task<(long Index, BlockHash Hash)?> GetTipAsyncImpl();
 
+    protected abstract void IndexImpl(
+        BlockDigest blockDigest,
+        IEnumerable<ITransaction> txs,
+        IIndexingContext? context,
+        CancellationToken token);
+
     protected abstract Task IndexAsyncImpl(
         BlockDigest blockDigest,
         IEnumerable<ITransaction> txs,
@@ -277,10 +288,10 @@ public abstract class BlockChainIndexBase : IBlockChainIndex
         CancellationToken token);
 
     /// <summary>
-    /// Get a context that can be consumed by <see cref="IBlockChainIndex.IndexAsync"/> and
+    /// Get a context that can be consumed by <see cref="IBlockChainIndex.Index"/> and
     /// <see cref="IBlockChainIndex.IndexAsync"/> for batch processing.
     /// </summary>
-    /// <returns>A context that can be consumed by <see cref="IBlockChainIndex.IndexAsync"/>.
+    /// <returns>A context that can be consumed by <see cref="IBlockChainIndex.Index"/>.
     /// </returns>
     protected abstract IIndexingContext GetIndexingContext();
 

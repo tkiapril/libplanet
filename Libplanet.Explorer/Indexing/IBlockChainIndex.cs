@@ -203,10 +203,13 @@ public interface IBlockChainIndex
     /// instances corresponding to <see cref="BlockDigest.TxIds"/> of given
     /// <paramref name="blockDigest"/>.</param>
     /// <param name="token">A token to mark the cancellation of processing.</param>
-    /// <returns>A <see cref="Task"/> that represents this asynchronous method.</returns>
     /// <exception cref="IndexMismatchException">Thrown if the index already has seen a block in
     /// the height of the given block, but the hash of the indexed block and the given block is
     /// different.</exception>
+    internal void Index(
+        BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken token);
+
+    /// <inheritdoc cref="Index"/>
     internal Task IndexAsync(
         BlockDigest blockDigest, IEnumerable<ITransaction> txs, CancellationToken token);
 
