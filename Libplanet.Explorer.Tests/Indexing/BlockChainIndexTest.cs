@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Libplanet.Action;
 using Libplanet.Blockchain;
 using Libplanet.Blockchain.Policies;
 using Libplanet.Blocks;
@@ -22,15 +23,15 @@ public abstract class BlockChainIndexTest
 
     protected const int MaxTxCount = 20;
 
-    protected abstract IBlockChainIndexFixture<SimpleAction> Fx { get; set; }
+    protected abstract IBlockChainIndexFixture<PolymorphicAction<SimpleAction>> Fx { get; set; }
 
     protected GeneratedBlockChainFixture ChainFx { get; set; }
 
-    protected Random RandomGenerator { get; }
+    protected System.Random RandomGenerator { get; }
 
     protected BlockChainIndexTest()
     {
-        RandomGenerator = new Random();
+        RandomGenerator = new System.Random();
         ChainFx = new GeneratedBlockChainFixture(
             RandomGenerator.Next(), BlockCount, MaxTxCount);
     }
@@ -39,11 +40,12 @@ public abstract class BlockChainIndexTest
     public async Task Synchronize()
     {
         var index = Fx.CreateEphemeralIndexInstance();
-        await index.SynchronizeAsync<SimpleAction>(ChainFx.Chain.Store, CancellationToken.None);
+        await index.SynchronizeAsync<PolymorphicAction<SimpleAction>>(
+            ChainFx.Chain.Store, CancellationToken.None);
 
-        var forkedChain = new BlockChain<SimpleAction>(
+        var forkedChain = new BlockChain<PolymorphicAction<SimpleAction>>(
             ChainFx.Chain.Policy,
-            new VolatileStagePolicy<SimpleAction>(),
+            new VolatileStagePolicy<PolymorphicAction<SimpleAction>>(),
             new MemoryStore(),
             new TrieStateStore(new MemoryKeyValueStore()),
             ChainFx.Chain.Genesis);

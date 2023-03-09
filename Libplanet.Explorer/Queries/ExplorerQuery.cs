@@ -52,64 +52,52 @@ namespace Libplanet.Explorer.Queries
             bool excludeEmptyTxs,
             Address? miner)
         {
-            IEnumerable<(long Index, BlockHash Hash)> indexList;
-            if (Index is not null)
+            var tipIndex = Index is not null
+                ? Index.Tip.Index
+                : Chain.Tip.Index;
+            if (offset < 0)
             {
-                if (offset < 0)
-                {
-                    offset = Index.Tip.Index + offset + 1;
-                }
-
-                indexList = Index.GetBlockHashesByOffset((int)offset, (int?)limit, desc);
+                offset = tipIndex + offset + 1;
             }
-            else
+
+            if (tipIndex < offset || offset < 0)
             {
-                Block<T> tip = Chain.Tip;
-                long tipIndex = tip.Index;
+                return Enumerable.Empty<Block<T>>();
+            }
 
-                if (desc)
+            IEnumerable<Block<T>> EnumerateBlocksDesc()
+            {
+                var block = Store.GetBlock<T>(
+                    Store.IterateIndexes(Chain.Id, (int)(tipIndex - offset), 1)
+                        .First());
+                while (
+                    limit is not { } limitVal
+                    || block.Index > tipIndex - offset - limitVal)
                 {
-                    if (offset < 0)
+                    yield return block;
+                    if (block.PreviousHash is not { } hashVal)
                     {
-                        offset = tipIndex + offset + 1;
+                        yield break;
                     }
-                    else
-                    {
-                        offset = tipIndex - offset + 1 - (limit ?? 0);
-                    }
-                }
-                else
-                {
-                    if (offset < 0)
-                    {
-                        offset = tipIndex + offset + 1;
-                    }
-                }
 
-                indexList = Store.IterateIndexes(
-                        Chain.Id,
-                        (int)offset,
-                        limit == null ? null : (int)limit)
-                    .Select((value, i) => ((long)i, value));
-
-                if (desc)
-                {
-                    indexList = indexList.Reverse();
+                    block = Store.GetBlock<T>(hashVal);
                 }
             }
 
-            foreach (var index in indexList)
-            {
-                var block = Store.GetBlock<T>(index.Hash);
-                bool isMinerValid = miner is null || miner == block.Miner;
-                bool isTxValid = !excludeEmptyTxs || block.Transactions.Any();
-                if (!isMinerValid || !isTxValid)
-                {
-                    continue;
-                }
-
-                yield return block;
-            }
+            return (
+                    Index is not null
+                        ? Index.GetBlockHashesByOffset((int)offset, (int?)limit, desc)
+                            .Select(t => Store.GetBlock<T>(t.Hash))
+                        : desc
+                            ? EnumerateBlocksDesc()
+                            : Store.IterateIndexes(
+                                    Chain.Id,
+                                    (int)offset,
+                                    limit == null ? null : (int)limit)
+                                .Select(hash => Store.GetBlock<T>(hash)))
+                .Where(block =>
+                    (miner is not { } minerVal || block.Miner == minerVal)
+                    && (!excludeEmptyTxs || block.Transactions.Any()));
         }
 
         internal static IEnumerable<Transaction<T>> ListTransactions(

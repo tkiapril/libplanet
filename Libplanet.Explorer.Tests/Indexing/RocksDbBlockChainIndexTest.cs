@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using Libplanet.Action;
 using Xunit;
 
 namespace Libplanet.Explorer.Tests.Indexing;
@@ -7,19 +8,23 @@ public class RocksDbBlockChainIndexTest: BlockChainIndexTest
 {
     public RocksDbBlockChainIndexTest()
     {
-        Fx = new RocksDbBlockChainIndexFixture<SimpleAction>(ChainFx.Chain.Store);
+        Fx = new RocksDbBlockChainIndexFixture<PolymorphicAction<SimpleAction>>(
+            ChainFx.Chain.Store);
     }
 
-    protected sealed override IBlockChainIndexFixture<SimpleAction> Fx { get; set; }
+    protected sealed override IBlockChainIndexFixture<PolymorphicAction<SimpleAction>> Fx {
+        get;
+        set;
+    }
 
     [Theory]
     [MemberData(nameof(BooleanPermutation3))]
     public async Task GetBlockHashesMultiByteIndex(bool offsetPresent, bool limitPresent, bool desc)
     {
-
         ChainFx = new GeneratedBlockChainFixture(
             RandomGenerator.Next(), byte.MaxValue + 2, 1, 1);
-        Fx = new RocksDbBlockChainIndexFixture<SimpleAction>(ChainFx.Chain.Store);
+        Fx = new RocksDbBlockChainIndexFixture<PolymorphicAction<SimpleAction>>(
+            ChainFx.Chain.Store);
         await GetBlockHashes(offsetPresent, limitPresent, desc);
     }
 
@@ -30,7 +35,8 @@ public class RocksDbBlockChainIndexTest: BlockChainIndexTest
     {
         ChainFx = new GeneratedBlockChainFixture(
             RandomGenerator.Next(), byte.MaxValue + 2, 1, 1);
-        Fx = new RocksDbBlockChainIndexFixture<SimpleAction>(ChainFx.Chain.Store);
+        Fx = new RocksDbBlockChainIndexFixture<PolymorphicAction<SimpleAction>>(
+            ChainFx.Chain.Store);
         await GetBlockHashesByMiner(offsetPresent, limitPresent, desc);
     }
 
@@ -39,7 +45,8 @@ public class RocksDbBlockChainIndexTest: BlockChainIndexTest
     {
         ChainFx = new GeneratedBlockChainFixture(
             RandomGenerator.Next(), byte.MaxValue + 2, 1, 1);
-        Fx = new RocksDbBlockChainIndexFixture<SimpleAction>(ChainFx.Chain.Store);
+        Fx = new RocksDbBlockChainIndexFixture<PolymorphicAction<SimpleAction>>(
+            ChainFx.Chain.Store);
         var tip = await Fx.Index.GetTipAsync();
         Assert.Equal(tip, Fx.Index.Tip);
         Assert.Equal(ChainFx.Chain.Tip.Hash, tip.Hash);
@@ -51,7 +58,8 @@ public class RocksDbBlockChainIndexTest: BlockChainIndexTest
     {
         ChainFx = new GeneratedBlockChainFixture(
             RandomGenerator.Next(), 2, byte.MaxValue + 2, 1);
-        Fx = new RocksDbBlockChainIndexFixture<SimpleAction>(ChainFx.Chain.Store);
+        Fx = new RocksDbBlockChainIndexFixture<PolymorphicAction<SimpleAction>>(
+            ChainFx.Chain.Store);
         await GetLastNonceByAddress();
     }
 
@@ -62,7 +70,8 @@ public class RocksDbBlockChainIndexTest: BlockChainIndexTest
     {
         ChainFx = new GeneratedBlockChainFixture(
             RandomGenerator.Next(), 2, byte.MaxValue + 2, 1);
-        Fx = new RocksDbBlockChainIndexFixture<SimpleAction>(ChainFx.Chain.Store);
+        Fx = new RocksDbBlockChainIndexFixture<PolymorphicAction<SimpleAction>>(
+            ChainFx.Chain.Store);
         await GetSignedTxIdsByAddress(offsetPresent, limitPresent, desc);
     }
 
@@ -72,7 +81,8 @@ public class RocksDbBlockChainIndexTest: BlockChainIndexTest
     {
         ChainFx = new GeneratedBlockChainFixture(
             RandomGenerator.Next(), 2, byte.MaxValue + 2, 1);
-        Fx = new RocksDbBlockChainIndexFixture<SimpleAction>(ChainFx.Chain.Store);
+        Fx = new RocksDbBlockChainIndexFixture<PolymorphicAction<SimpleAction>>(
+            ChainFx.Chain.Store);
         await GetInvolvedTxIdsByAddress(offsetPresent, limitPresent, desc);
     }
 }
