@@ -25,11 +25,12 @@ public class SimpleAction : IAction
             6 => new SimpleAction6(),
             7 => new SimpleAction7(),
             8 => new SimpleAction8(),
-            9 => new SimpleAction1Fail(),
+            9 => new SimpleAction0Fail(),
             _ => new SimpleAction0(),
         };
 }
 
+[ActionType(nameof(SimpleAction0))]
 public class SimpleAction0 : SimpleAction
 {
 }
@@ -75,8 +76,9 @@ public class SimpleAction8 : SimpleAction
 }
 
 // For overlapping custom action id test and fail test
-[ActionType(nameof(SimpleAction1Fail))]
-public class SimpleAction1Fail : SimpleAction
+[ActionType(nameof(SimpleAction0Fail))]
+public class SimpleAction0Fail : SimpleAction
 {
-    public override IAccountStateDelta Execute(IActionContext context) => throw new Exception();
+    public override IAccountStateDelta Execute(IActionContext context) =>
+        throw new CurrencyPermissionException("test message", context.Signer, default);
 }

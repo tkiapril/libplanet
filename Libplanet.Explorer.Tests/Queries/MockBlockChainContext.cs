@@ -25,4 +25,13 @@ public class MockBlockChainContext<T> : IBlockChainContext<T>
         BlockChain = chain;
         Store = BlockChain.Store;
     }
+
+    public MockBlockChainContext(IStore store)
+    {
+        Store = store;
+    }
+
+    public MockBlockChainContext()
+    {
+    }
 }

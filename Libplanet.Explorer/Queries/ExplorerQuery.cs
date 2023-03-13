@@ -52,55 +52,49 @@ namespace Libplanet.Explorer.Queries
             bool excludeEmptyTxs,
             Address? miner)
         {
-            IEnumerable<(long Index, BlockHash Hash)> indexList;
-            if (Index is not null)
+            Block<T> tip = Chain.Tip;
+            long tipIndex = tip.Index;
+            IStore store = ChainContext.Store;
+
+            if (desc)
             {
                 if (offset < 0)
                 {
-                    offset = Index.Tip.Index + offset + 1;
+                    offset = tipIndex + offset + 1;
                 }
 
-                indexList = Index.GetBlockHashesByOffset((int)offset, (int?)limit, desc);
-            }
-            else
-            {
-                Block<T> tip = Chain.Tip;
-                long tipIndex = tip.Index;
-
-                if (desc)
+                if (limit is { } limitVal)
                 {
-                    if (offset < 0)
-                    {
-                        offset = tipIndex + offset + 1;
-                    }
-                    else
-                    {
-                        offset = tipIndex - offset + 1 - (limit ?? 0);
-                    }
+                    offset = tipIndex - offset + 1 - limitVal;
                 }
                 else
                 {
-                    if (offset < 0)
-                    {
-                        offset = tipIndex + offset + 1;
-                    }
+                    limit = tipIndex - offset + 1;
+                    offset = 0;
                 }
-
-                indexList = Store.IterateIndexes(
-                        Chain.Id,
-                        (int)offset,
-                        limit == null ? null : (int)limit)
-                    .Select((value, i) => ((long)i, value));
-
-                if (desc)
+            }
+            else
+            {
+                if (offset < 0)
                 {
-                    indexList = indexList.Reverse();
+                    offset = tipIndex + offset + 1;
                 }
+            }
+
+            var indexList = store.IterateIndexes(
+                    Chain.Id,
+                    (int)offset,
+                    limit == null ? null : (int)limit)
+                .Select((value, i) => new { i, value } );
+
+            if (desc)
+            {
+                indexList = indexList.Reverse();
             }
 
             foreach (var index in indexList)
             {
-                var block = Store.GetBlock<T>(index.Hash);
+                var block = store.GetBlock<T>(index.value);
                 bool isMinerValid = miner is null || miner == block.Miner;
                 bool isTxValid = !excludeEmptyTxs || block.Transactions.Any();
                 if (!isMinerValid || !isTxValid)

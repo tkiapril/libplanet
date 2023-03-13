@@ -5,9 +5,15 @@ using GraphQL;
 using GraphQL.Execution;
 using GraphQL.Types;
 using Libplanet.Action;
+using Libplanet.Blockchain;
 using Libplanet.Blocks;
 using Libplanet.Crypto;
 using Libplanet.Explorer.GraphTypes;
+using Libplanet.Explorer.Indexing;
+using Libplanet.Explorer.Interfaces;
+using Libplanet.Explorer.Tests.Queries;
+using Libplanet.Net;
+using Libplanet.Store;
 using Libplanet.Tx;
 using Xunit;
 using static Libplanet.Explorer.Tests.GraphQLTestUtils;
@@ -38,7 +44,10 @@ namespace Libplanet.Explorer.Tests.GraphTypes
                 }";
 
             ExecutionResult result =
-                await ExecuteQueryAsync<TransactionType<NullAction>>(query, source: transaction);
+                await ExecuteQueryAsync(
+                    query,
+                    new TransactionType<NullAction>(new MockBlockChainContext<NullAction>()),
+                    source: transaction);
             Dictionary<string, object> resultData =
                 (Dictionary<string, object>)((ExecutionNode) result.Data!)?.ToValue()!;
             Assert.Null(result.Errors);
