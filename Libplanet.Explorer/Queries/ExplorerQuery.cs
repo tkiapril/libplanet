@@ -193,7 +193,10 @@ namespace Libplanet.Explorer.Queries
 
         internal static Block<T> GetBlockByHash(BlockHash hash) => Store.GetBlock<T>(hash);
 
-        internal static Block<T> GetBlockByIndex(long index) => Chain[index];
+        internal static Block<T> GetBlockByIndex(long index) =>
+            Index is not null
+                ? Store.GetBlock<T>(Index[index])
+                : Chain[index];
 
         internal static Transaction<T> GetTransaction(TxId id) => Chain.GetTransaction(id);
 

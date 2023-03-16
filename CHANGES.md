@@ -54,6 +54,7 @@ To be released.
         if available.
      -  `transactionResult` query in `TransactionQuery` now uses
         `IBlockChainIndex` if available.
+     -  `block` query in `BlockQuery` now uses `IBlockChainIndex` if available.
 
 ### Bug fixes
 
